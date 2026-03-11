@@ -1,0 +1,105 @@
+---
+alwaysApply: true
+---
+# Project Rules - Materials Admin Local Tool
+
+## Contexto del proyecto
+
+Este proyecto es una herramienta interna de escritorio/web local para administrar materiales de construcción mediante APIs ya existentes.
+
+El objetivo es crear una interfaz gráfica simple, clara y mantenible para usar en PC local, que permita consultar, revisar y editar materiales sin tener que operar manualmente uno por uno desde requests sueltas.
+
+NO es un sistema público.
+NO requiere autenticación por ahora.
+NO requiere despliegue.
+Debe pensarse para correr localmente durante el desarrollo.
+
+---
+
+## Objetivo inicial
+
+Construir la base de una aplicación frontend que permita:
+
+1. Obtener el listado completo de materiales desde:
+   `baseUrl/materials/all`
+
+2. Mostrar esos materiales en una vista tipo tabla o listado administrable.
+
+3. Preparar la estructura del proyecto para que más adelante pueda soportar:
+   - altas de materiales
+   - ediciones parciales (patch)
+   - eliminación
+   - detección de duplicados
+   - revisión de precios
+   - exportación a Excel
+   - edición masiva respetando IDs existentes y formato esperado
+
+IMPORTANTE:
+En esta primera etapa NO implementar toda la lógica avanzada.
+Primero dejar bien creada la base del proyecto, su arquitectura, la pantalla inicial y la integración de lectura con la API.
+
+---
+
+## Stack deseado
+
+- Next.js 15
+- TypeScript
+- Proyecto local
+- Sin Tailwind
+- Estilos con CSS Modules o una solución simple y ordenada
+- Componentes reutilizables
+- Código claro, mantenible y desacoplado
+
+---
+
+## Requisitos funcionales iniciales
+
+Implementar solo lo básico:
+
+- una pantalla principal de administración de materiales
+- fetch del endpoint `baseUrl/materials/all`
+- manejo de loading
+- manejo de error
+- render del array `data`
+- tabla o grilla con columnas al menos para:
+  - id
+  - name
+  - description
+  - price
+  - unit
+  - brand
+  - unquoted
+  - temporary
+  - updated_at
+
+No inventar todavía flujos complejos.
+No agregar lógica masiva.
+No agregar importación ni exportación de Excel todavía.
+No agregar formularios finales de alta todavía.
+Solo dejar el proyecto bien preparado para crecer hacia eso.
+
+---
+
+## Forma esperada de la respuesta de la API
+
+La API responde con una estructura similar a esta:
+
+```json
+{
+  "message": "The materials has been successfully returned",
+  "data": [
+    {
+      "id": "1",
+      "name": "Ventana 2 hojas corredizas c/ vidrio 1.50m x1.20m",
+      "description": "línea Vesta",
+      "price": 513900,
+      "unquoted": false,
+      "temporary": false,
+      "unit": "u",
+      "brand": null,
+      "created_at": "2024-12-23T19:36:03.461Z",
+      "updated_at": "2025-04-16T18:36:39.000Z",
+      "delete_at": null
+    }
+  ]
+}

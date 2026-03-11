@@ -1,0 +1,222 @@
+.wrapper {
+  overflow-x: auto;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.thCheck {
+  width: 44px;
+  padding: 14px 12px;
+  background: #1e1e1e;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.thCheck input {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.th {
+  text-align: left;
+  padding: 14px 18px;
+  background: #1e1e1e;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.tr {
+  border-bottom: 1px solid #eaeaea;
+}
+
+.tr:last-child {
+  border-bottom: none;
+}
+
+.tr:hover {
+  background: #f8f8f8;
+}
+
+.tr:hover .tdActions {
+  background: #f8f8f8;
+}
+
+.tr.duplicate {
+  background: #fff8e6;
+}
+
+.tr.duplicate:hover {
+  background: #fff3d6;
+}
+
+.tr.duplicate:hover .tdActions {
+  background: #fff3d6;
+}
+
+.tdCheck {
+  width: 44px;
+  padding: 12px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.tdCheck input {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.td {
+  padding: 12px 18px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #333;
+}
+
+.td:nth-child(3),
+.td:nth-child(4) {
+  max-width: 340px;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.tdId {
+  padding: 12px 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.idBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: #e8e8e8;
+  border-radius: 4px;
+}
+
+.tdNum {
+  padding: 12px 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.thGroup {
+  text-align: left;
+  padding: 14px 18px;
+  background: #2d2d2d;
+  color: #ffd54f;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  min-width: 200px;
+}
+
+.tdGroup {
+  padding: 12px 18px;
+  font-size: 13px;
+  color: #333;
+  max-width: 320px;
+}
+
+.duplicateInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.keptBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1b5e20;
+  background: #c8e6c9;
+  border-radius: 4px;
+}
+
+.toDeleteBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b71c1c;
+  background: #ffcdd2;
+  border-radius: 4px;
+}
+
+.duplicateCount {
+  font-weight: 600;
+  color: #b45309;
+}
+
+.duplicateIds {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+  font-size: 12px;
+  color: #555;
+}
+
+.currentId {
+  color: #1a1a1a;
+  text-decoration: underline;
+}
+
+.noDuplicate {
+  color: #999;
+}
+
+.thActions {
+  position: sticky;
+  right: 0;
+  width: 90px;
+  min-width: 90px;
+  padding: 14px 12px;
+  background: #1e1e1e;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.1);
+}
+
+.tdActions {
+  position: sticky;
+  right: 0;
+  padding: 12px;
+  background: #fff;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.05);
+}
+
+.tr.duplicate .tdActions {
+  background: #fff8e6;
+}
+
+.editBtn {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #1565c0;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.editBtn:hover {
+  background: #bbdefb;
+}

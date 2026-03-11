@@ -1,0 +1,354 @@
+.section {
+  margin-bottom: 24px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.toggle {
+  width: 100%;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  color: #1a1a1a;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle:hover {
+  background: #f5f5f5;
+}
+
+.content {
+  padding: 20px;
+  border-top: 1px solid #e0e0e0;
+  background: #fff;
+}
+
+.textarea {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #1565c0;
+}
+
+.toolbar {
+  margin-bottom: 16px;
+}
+
+.parseBtn {
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: #1565c0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.parseBtn:hover:not(:disabled) {
+  background: #0d47a1;
+}
+
+.parseBtn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.badgeUpdate {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0d47a1;
+  background: #e3f2fd;
+  border-radius: 6px;
+}
+
+.badgeCreate {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1b5e20;
+  background: #e8f5e9;
+  border-radius: 6px;
+}
+
+.badgeSkip {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #616161;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.categoryRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.categoryRow label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.select {
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  min-width: 220px;
+}
+
+.previewWrapper {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.previewToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.filterGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filterLabel {
+  font-size: 13px;
+  color: #666;
+  margin-right: 4px;
+}
+
+.filterBtn {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #555;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.filterBtn:hover {
+  background: #eee;
+}
+
+.filterBtnActive {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #1565c0;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.checkLabel input {
+  cursor: pointer;
+}
+
+.count {
+  font-size: 13px;
+  color: #666;
+}
+
+.tableScroll {
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.thCheck {
+  width: 44px;
+  padding: 12px;
+  background: #1e1e1e;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.thCheck input {
+  cursor: pointer;
+}
+
+.th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #1e1e1e;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.tdCheck {
+  width: 44px;
+  padding: 10px 12px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.tdCheck input {
+  cursor: pointer;
+}
+
+.td {
+  padding: 10px 16px;
+  color: #333;
+  border-bottom: 1px solid #eee;
+}
+
+.tdName {
+  padding: 10px 16px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #333;
+  border-bottom: 1px solid #eee;
+}
+
+.tdNum {
+  padding: 10px 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  border-bottom: 1px solid #eee;
+}
+
+.cellSelect {
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  min-width: 140px;
+  max-width: 200px;
+}
+
+.cellInput {
+  width: 100%;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.tr:hover {
+  background: #f8f8f8;
+}
+
+.matched {
+  font-size: 13px;
+  color: #555;
+}
+
+.noMatch {
+  color: #999;
+}
+
+.execToolbar {
+  margin-bottom: 12px;
+}
+
+.execBtn {
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #2e7d32;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.execBtn:hover:not(:disabled) {
+  background: #1b5e20;
+}
+
+.execBtn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.resultSuccess {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #1b5e20;
+  background: #e8f5e9;
+  border-radius: 6px;
+}
+
+.resultError {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #b71c1c;
+  background: #ffebee;
+  border-radius: 6px;
+}
+
+.empty {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.categorizing {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #1565c0;
+}
