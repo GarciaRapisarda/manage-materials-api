@@ -48,7 +48,44 @@
 }
 
 .toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
+}
+
+.hiddenInput {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.alumetalBtn {
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1565c0;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.alumetalBtn:hover:not(:disabled) {
+  background: #bbdefb;
+}
+
+.alumetalBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toolbarSep {
+  font-size: 14px;
+  color: #888;
 }
 
 .parseBtn {

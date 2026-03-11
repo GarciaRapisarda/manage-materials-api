@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { parseChunk } from "@/lib/chunk-parser";
 import {
   matchChunkToMaterials,
   type ChunkPreviewItem,
 } from "@/lib/chunk-matcher";
+import { alumetalToParsed, type AlumetalMaterial } from "@/lib/alumetal-importer";
 import { patchMaterial, createMaterial } from "@/services/materials";
 import { categorizeMaterials } from "@/services/categorize";
 import { getStoredToken } from "@/lib/auth";
@@ -39,6 +40,72 @@ export function ChunkImportSection({
     created: number;
     failed: string | null;
   } | null>(null);
+  const [alumetalError, setAlumetalError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function resolveCategoryId(categoryName: string): string {
+    const c = categories.find(
+      (cat) =>
+        cat.name === categoryName ||
+        cat.name.toLowerCase() === categoryName.toLowerCase()
+    );
+    return c?.id ?? "";
+  }
+
+  function handleAlumetalFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAlumetalError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = reader.result as string;
+        const data = JSON.parse(text) as AlumetalMaterial[] | { data: AlumetalMaterial[] };
+        const items: AlumetalMaterial[] = Array.isArray(data)
+          ? data
+          : "data" in data && Array.isArray(data.data)
+            ? data.data
+            : [];
+        if (items.length === 0) {
+          setAlumetalError("El JSON no contiene un array de materiales");
+          return;
+        }
+        const first = items[0];
+        if (
+          typeof first?.name !== "string" ||
+          typeof first?.price !== "number"
+        ) {
+          setAlumetalError(
+            "Formato inválido. Esperado: array de { name, price, sourceCategory?, unit? }"
+          );
+          return;
+        }
+        const parsed = alumetalToParsed(items);
+        const itemsPreview = matchChunkToMaterials(parsed, materials);
+        const withCategory = itemsPreview.map((item) => {
+          if (item.action !== "create" || !item.parsed.sectionContext) return item;
+          const catId = resolveCategoryId(item.parsed.sectionContext);
+          return {
+            ...item,
+            llmResult: {
+              categoryId: catId,
+              unit: item.parsed.unit ?? "u",
+            },
+          };
+        });
+        setPreview(withCategory);
+        setIncluded(new Set(withCategory.map((_, i) => i)));
+        setExecResult(null);
+        setCategorizeError(null);
+      } catch (err) {
+        setAlumetalError(
+          err instanceof Error ? err.message : "Error al leer el archivo"
+        );
+      }
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  }
 
   async function handleParse() {
     const parsed = parseChunk(chunkText);
@@ -266,15 +333,35 @@ export function ChunkImportSection({
             rows={8}
           />
           <div className={styles.toolbar}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleAlumetalFile}
+              className={styles.hiddenInput}
+              aria-label="Cargar JSON de Alumetal"
+            />
+            <button
+              type="button"
+              className={styles.alumetalBtn}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={categorizing}
+            >
+              Cargar desde Alumetal (JSON)
+            </button>
+            <span className={styles.toolbarSep}>o</span>
             <button
               type="button"
               className={styles.parseBtn}
               onClick={handleParse}
               disabled={!chunkText.trim() || categorizing}
             >
-              {categorizing ? "Asignando..." : "Parsear y comparar"}
+              {categorizing ? "Asignando..." : "Parsear chunk y comparar"}
             </button>
           </div>
+          {alumetalError && (
+            <p className={styles.resultError}>{alumetalError}</p>
+          )}
 
           {preview && preview.length > 0 && (
             <>
