@@ -43,11 +43,24 @@ export function ChunkImportSection({
   const [alumetalError, setAlumetalError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  function normalizeCategoryName(s: string): string {
+    return s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/,/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function resolveCategoryId(categoryName: string): string {
+    if (!categoryName?.trim()) return "";
+    const normalized = normalizeCategoryName(categoryName);
     const c = categories.find(
       (cat) =>
         cat.name === categoryName ||
-        cat.name.toLowerCase() === categoryName.toLowerCase()
+        cat.name.toLowerCase() === categoryName.toLowerCase() ||
+        normalizeCategoryName(cat.name) === normalized
     );
     return c?.id ?? "";
   }
@@ -82,9 +95,14 @@ export function ChunkImportSection({
         }
         const parsed = alumetalToParsed(items);
         const itemsPreview = matchChunkToMaterials(parsed, materials);
+        const fallbackCategoryId =
+          categories.length > 0
+            ? resolveCategoryId("Otros") || categories[0].id
+            : "";
         const withCategory = itemsPreview.map((item) => {
           if (item.action !== "create" || !item.parsed.sectionContext) return item;
-          const catId = resolveCategoryId(item.parsed.sectionContext);
+          const catId =
+            resolveCategoryId(item.parsed.sectionContext) || fallbackCategoryId;
           return {
             ...item,
             llmResult: {
@@ -339,7 +357,7 @@ export function ChunkImportSection({
               accept=".json,application/json"
               onChange={handleAlumetalFile}
               className={styles.hiddenInput}
-              aria-label="Cargar JSON de Alumetal"
+              aria-label="Cargar JSON Alumetal, Todo Proyectable o Edify"
             />
             <button
               type="button"
@@ -347,7 +365,7 @@ export function ChunkImportSection({
               onClick={() => fileInputRef.current?.click()}
               disabled={categorizing}
             >
-              Cargar desde Alumetal (JSON)
+              Cargar desde JSON (Alumetal / Todo Proyectable / Edify)
             </button>
             <span className={styles.toolbarSep}>o</span>
             <button

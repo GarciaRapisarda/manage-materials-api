@@ -9,7 +9,13 @@
     "lint": "next lint",
     "scrape:alumetal": "tsx scripts/scrape-alumetal.ts",
     "scrape:alumetal:test": "tsx scripts/scrape-alumetal.ts test",
-    "scrape:alumetal:categories": "tsx scripts/scrape-alumetal.ts categories"
+    "scrape:alumetal:categories": "tsx scripts/scrape-alumetal.ts categories",
+    "scrape:todoproyectable": "tsx scripts/scrape-todoproyectable.ts",
+    "scrape:todoproyectable:test": "tsx scripts/scrape-todoproyectable.ts test",
+    "scrape:todoproyectable:categories": "tsx scripts/scrape-todoproyectable.ts categories",
+    "scrape:edify": "tsx scripts/scrape-edify.ts all",
+    "scrape:edify:test": "tsx scripts/scrape-edify.ts test",
+    "scrape:edify:categories": "tsx scripts/scrape-edify.ts categories"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
