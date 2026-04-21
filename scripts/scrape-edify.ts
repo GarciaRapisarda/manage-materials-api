@@ -226,7 +226,7 @@ function extractProductsFromHtml(
 
     const data = productIdFromDom ? dataByProductId.get(productIdFromDom) : null;
 
-    if (data) {
+    if (data && productIdFromDom) {
       seen.add(url);
       products.push({
         name: data.name,
