@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useDeferredValue,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { getStoredToken, clearStoredToken } from "@/lib/auth";
 import { fetchAllMaterials, deleteMaterial, patchMaterial, createMaterial } from "@/services/materials";
@@ -61,6 +69,9 @@ export function MaterialsView() {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [addingMaterial, setAddingMaterial] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [, startFilterTransition] = useTransition();
+  const deferredSearch = useDeferredValue(search);
+  const filteredMaterialsRef = useRef<Material[]>([]);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -104,9 +115,10 @@ export function MaterialsView() {
   const filteredMaterials = useMemo(() => {
     if (!materials) return [];
     let result = materials;
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      result = result.filter((m) => m.name.toLowerCase().includes(q));
+    const q = deferredSearch.trim();
+    if (q) {
+      const lower = q.toLowerCase();
+      result = result.filter((m) => m.name.toLowerCase().includes(lower));
     }
     if (quickFilters.onlyDuplicates) {
       result = result.filter((m) => duplicateGroups.has(m.id));
@@ -127,9 +139,11 @@ export function MaterialsView() {
       result = result.filter((m) => m.unquoted);
     }
     return result;
-  }, [materials, search, quickFilters, duplicateGroups]);
+  }, [materials, deferredSearch, quickFilters, duplicateGroups]);
 
-  function toggleSelection(id: string) {
+  filteredMaterialsRef.current = filteredMaterials;
+
+  const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -137,12 +151,12 @@ export function MaterialsView() {
       return next;
     });
     setDeleteResult(null);
-  }
+  }, []);
 
-  function selectAll(checked: boolean) {
+  const selectAll = useCallback((checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      const visibleIds = filteredMaterials.map((m) => m.id);
+      const visibleIds = filteredMaterialsRef.current.map((m) => m.id);
       if (checked) {
         visibleIds.forEach((id) => next.add(id));
       } else {
@@ -151,19 +165,32 @@ export function MaterialsView() {
       return next;
     });
     setDeleteResult(null);
-  }
+  }, []);
+
+  const handleEditMaterial = useCallback((m: Material) => {
+    setEditingMaterial(m);
+  }, []);
+
+  const handleChunkImportSuccess = useCallback(() => {
+    const token = getStoredToken();
+    if (token) {
+      fetchAllMaterials(token).then((res) => setMaterials(res.data));
+    }
+  }, []);
 
   function selectDuplicatesForCleanup() {
     setSelectedIds(new Set(duplicateToSelect));
     setDeleteResult(null);
   }
 
-  function setQuickFilter<K extends keyof QuickFilters>(
-    key: K,
-    value: QuickFilters[K]
-  ) {
-    setQuickFilters((prev) => ({ ...prev, [key]: value }));
-  }
+  const setQuickFilter = useCallback(
+    (key: keyof QuickFilters, value: boolean) => {
+      startFilterTransition(() => {
+        setQuickFilters((prev) => ({ ...prev, [key]: value }));
+      });
+    },
+    []
+  );
 
   function exportAll(format: "csv" | "xlsx") {
     if (!materials) return;
@@ -332,12 +359,7 @@ export function MaterialsView() {
       <ChunkImportSection
         materials={materials}
         categories={categories}
-        onSuccess={() => {
-          const token = getStoredToken();
-          if (token) {
-            fetchAllMaterials(token).then((res) => setMaterials(res.data));
-          }
-        }}
+        onSuccess={handleChunkImportSuccess}
       />
       <div className={styles.toolbar}>
         <input
@@ -502,7 +524,7 @@ export function MaterialsView() {
         selectedIds={selectedIds}
         onToggleSelection={toggleSelection}
         onSelectAll={selectAll}
-        onEdit={(m) => setEditingMaterial(m)}
+        onEdit={handleEditMaterial}
       />
       <EditMaterialModal
         material={editingMaterial}

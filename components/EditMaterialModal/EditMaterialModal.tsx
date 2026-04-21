@@ -34,16 +34,19 @@ export function EditMaterialModal({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (material) {
-      setCategoryId(material.categoryId ?? "");
-      setName(material.name ?? "");
-      setDescription(material.description ?? "");
-      setPrice(String(material.price ?? 0));
-      setUnit(material.unit ?? "");
-      setBrand(material.brand ?? "");
-      setError(null);
-      setFieldErrors({});
-    }
+    if (!material) return;
+    setCategoryId(
+      material.categoryId != null && material.categoryId !== ""
+        ? String(material.categoryId)
+        : ""
+    );
+    setName(material.name ?? "");
+    setDescription(material.description ?? "");
+    setPrice(String(material.price ?? 0));
+    setUnit(material.unit ?? "");
+    setBrand(material.brand ?? "");
+    setError(null);
+    setFieldErrors({});
   }, [material]);
 
   if (!material) return null;

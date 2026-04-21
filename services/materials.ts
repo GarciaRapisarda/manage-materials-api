@@ -1,6 +1,98 @@
 import { API_BASE_URL } from "@/config/api";
 import type { Material, MaterialsApiResponse } from "@/types/material";
 
+function asMaterialRecord(raw: unknown): Record<string, unknown> | null {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return null;
+}
+
+function firstNonEmptyString(...candidates: unknown[]): string | null {
+  for (const v of candidates) {
+    if (v == null || v === "") continue;
+    return String(v);
+  }
+  return null;
+}
+
+function extractCategoryIdFromMaterialRecord(
+  r: Record<string, unknown>
+): string | null {
+  const fromScalars = firstNonEmptyString(
+    r.categoryId,
+    r.category_id,
+    r.CategoryId,
+    r.categoryID,
+    r.idCategory,
+    r.id_category,
+    r.fk_category_id,
+    r.fkCategoryId
+  );
+  if (fromScalars) return fromScalars;
+
+  const nested = r.category;
+  if (typeof nested === "number") {
+    return String(nested);
+  }
+  if (typeof nested === "string" && nested.trim() !== "") {
+    return nested.trim();
+  }
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const c = nested as Record<string, unknown>;
+    const fromNested = firstNonEmptyString(
+      c.id,
+      c.category_id,
+      c.categoryId
+    );
+    if (fromNested) return fromNested;
+  }
+
+  const cats = r.categories;
+  if (Array.isArray(cats) && cats.length > 0) {
+    const first = cats[0];
+    if (first && typeof first === "object" && !Array.isArray(first)) {
+      const c = first as Record<string, unknown>;
+      const fromArr = firstNonEmptyString(
+        c.id,
+        c.category_id,
+        c.categoryId
+      );
+      if (fromArr) return fromArr;
+    }
+  }
+
+  return null;
+}
+
+export function normalizeMaterialFromApi(raw: unknown): Material {
+  const r = asMaterialRecord(raw);
+  if (!r) {
+    throw new Error("Material inválido: se esperaba un objeto");
+  }
+  const categoryId = extractCategoryIdFromMaterialRecord(r);
+  const brandRaw = r.brand;
+  return {
+    id: String(r.id ?? ""),
+    categoryId,
+    name: String(r.name ?? ""),
+    description: String(r.description ?? ""),
+    price:
+      typeof r.price === "number" ? r.price : Number(r.price) || 0,
+    unit: String(r.unit ?? ""),
+    brand:
+      brandRaw == null || brandRaw === "" ? null : String(brandRaw),
+    unquoted: Boolean(r.unquoted),
+    temporary: Boolean(r.temporary),
+    created_at: String(r.created_at ?? ""),
+    updated_at: String(r.updated_at ?? ""),
+    delete_at:
+      r.delete_at == null || r.delete_at === ""
+        ? null
+        : String(r.delete_at),
+  };
+}
+
 export async function fetchAllMaterials(
   token: string
 ): Promise<MaterialsApiResponse> {
@@ -14,8 +106,18 @@ export async function fetchAllMaterials(
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
 
-  const json = await res.json();
-  return json as MaterialsApiResponse;
+  const json = (await res.json()) as {
+    message?: unknown;
+    data?: unknown;
+  };
+  const rows = json.data;
+  const data = Array.isArray(rows)
+    ? rows.map((row) => normalizeMaterialFromApi(row))
+    : [];
+  return {
+    message: String(json.message ?? ""),
+    data,
+  };
 }
 
 export async function deleteMaterial(
@@ -93,9 +195,10 @@ export async function createMaterial(
     throw new Error(text || `Error ${res.status}: ${res.statusText}`);
   }
 
-  const json = (await res.json()) as { data?: Material } | Material;
-  if (json && typeof json === "object" && "data" in json) {
-    return json.data as Material;
-  }
-  return json as Material;
+  const json = (await res.json()) as { data?: unknown } | unknown;
+  const raw =
+    json && typeof json === "object" && "data" in json
+      ? (json as { data: unknown }).data
+      : json;
+  return normalizeMaterialFromApi(raw);
 }

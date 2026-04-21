@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Material } from "@/types/material";
 import type { DuplicateGroupInfo } from "@/lib/duplicates";
 import { formatPrice, formatDate, displayValue } from "@/lib/formatters";
@@ -55,7 +56,7 @@ function DuplicateGroupCell({
   );
 }
 
-export function MaterialsTable({
+function MaterialsTableInner({
   materials,
   duplicateGroups,
   duplicateToKeep,
@@ -159,3 +160,5 @@ export function MaterialsTable({
     </div>
   );
 }
+
+export const MaterialsTable = memo(MaterialsTableInner);

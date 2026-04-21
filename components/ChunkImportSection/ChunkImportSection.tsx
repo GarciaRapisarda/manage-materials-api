@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, memo } from "react";
 import { parseChunk } from "@/lib/chunk-parser";
 import {
   matchChunkToMaterials,
@@ -22,7 +22,7 @@ interface ChunkImportSectionProps {
   onSuccess: () => void;
 }
 
-export function ChunkImportSection({
+function ChunkImportSectionInner({
   materials,
   categories,
   onSuccess,
@@ -640,3 +640,5 @@ export function ChunkImportSection({
     </section>
   );
 }
+
+export const ChunkImportSection = memo(ChunkImportSectionInner);
