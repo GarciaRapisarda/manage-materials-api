@@ -34,7 +34,7 @@ function DuplicateGroupCell({
   return (
     <span className={styles.duplicateInfo}>
       {isKept ? (
-        <span className={styles.keptBadge}>Se conserva (menor ID)</span>
+        <span className={styles.keptBadge}>Se conserva (más reciente)</span>
       ) : isSelected ? (
         <span className={styles.toDeleteBadge}>Para eliminar</span>
       ) : null}

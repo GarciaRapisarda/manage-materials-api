@@ -108,8 +108,9 @@ export function MaterialsView() {
   );
 
   const { toSelect: duplicateToSelect, toKeep: duplicateToKeep } = useMemo(
-    () => getDuplicateCleanupSelection(duplicateGroups),
-    [duplicateGroups]
+    () =>
+      getDuplicateCleanupSelection(duplicateGroups, materials ?? []),
+    [duplicateGroups, materials]
   );
 
   const filteredMaterials = useMemo(() => {

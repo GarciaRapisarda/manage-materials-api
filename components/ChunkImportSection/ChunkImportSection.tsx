@@ -71,55 +71,88 @@ function ChunkImportSectionInner({
     setAlumetalError(null);
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const text = reader.result as string;
-        const data = JSON.parse(text) as AlumetalMaterial[] | { data: AlumetalMaterial[] };
-        const items: AlumetalMaterial[] = Array.isArray(data)
-          ? data
-          : "data" in data && Array.isArray(data.data)
-            ? data.data
-            : [];
-        if (items.length === 0) {
-          setAlumetalError("El JSON no contiene un array de materiales");
-          return;
-        }
-        const first = items[0];
-        if (
-          typeof first?.name !== "string" ||
-          typeof first?.price !== "number"
-        ) {
+      void (async () => {
+        try {
+          const text = reader.result as string;
+          const data = JSON.parse(text) as AlumetalMaterial[] | { data: AlumetalMaterial[] };
+          const items: AlumetalMaterial[] = Array.isArray(data)
+            ? data
+            : "data" in data && Array.isArray(data.data)
+              ? data.data
+              : [];
+          if (items.length === 0) {
+            setAlumetalError("El JSON no contiene un array de materiales");
+            return;
+          }
+          const first = items[0];
+          if (
+            typeof first?.name !== "string" ||
+            typeof first?.price !== "number"
+          ) {
+            setAlumetalError(
+              "Formato inválido. Esperado: array de { name, price, sourceCategory?, unit? }"
+            );
+            return;
+          }
+          const parsed = alumetalToParsed(items);
+          const itemsPreview = matchChunkToMaterials(parsed, materials);
+          const fallbackCategoryId =
+            categories.length > 0
+              ? resolveCategoryId("Otros") || categories[0].id
+              : "";
+          const toCreate = itemsPreview.filter((p) => p.action === "create");
+          let llmResults: Awaited<ReturnType<typeof categorizeMaterials>> = [];
+          if (toCreate.length > 0) {
+            setCategorizing(true);
+            setCategorizeError(null);
+            try {
+              llmResults = await categorizeMaterials(
+                toCreate.map((p) => ({
+                  name: p.parsed.name,
+                  sectionContext: p.parsed.sectionContext,
+                }))
+              );
+            } catch (err) {
+              setCategorizeError(
+                err instanceof Error ? err.message : "Error al categorizar"
+              );
+            } finally {
+              setCategorizing(false);
+            }
+          }
+          let createIndex = 0;
+          const withCategory = itemsPreview.map((item) => {
+            if (item.action !== "create") return item;
+            const r = llmResults[createIndex++];
+            if (r) {
+              return {
+                ...item,
+                llmResult: {
+                  categoryId: r.categoryId,
+                  unit: r.unit || item.parsed.unit || "u",
+                },
+              };
+            }
+            const catId =
+              resolveCategoryId(item.parsed.sectionContext ?? "") ||
+              fallbackCategoryId;
+            return {
+              ...item,
+              llmResult: {
+                categoryId: catId,
+                unit: item.parsed.unit ?? "u",
+              },
+            };
+          });
+          setPreview(withCategory);
+          setIncluded(new Set(withCategory.map((_, i) => i)));
+          setExecResult(null);
+        } catch (err) {
           setAlumetalError(
-            "Formato inválido. Esperado: array de { name, price, sourceCategory?, unit? }"
+            err instanceof Error ? err.message : "Error al leer el archivo"
           );
-          return;
         }
-        const parsed = alumetalToParsed(items);
-        const itemsPreview = matchChunkToMaterials(parsed, materials);
-        const fallbackCategoryId =
-          categories.length > 0
-            ? resolveCategoryId("Otros") || categories[0].id
-            : "";
-        const withCategory = itemsPreview.map((item) => {
-          if (item.action !== "create" || !item.parsed.sectionContext) return item;
-          const catId =
-            resolveCategoryId(item.parsed.sectionContext) || fallbackCategoryId;
-          return {
-            ...item,
-            llmResult: {
-              categoryId: catId,
-              unit: item.parsed.unit ?? "u",
-            },
-          };
-        });
-        setPreview(withCategory);
-        setIncluded(new Set(withCategory.map((_, i) => i)));
-        setExecResult(null);
-        setCategorizeError(null);
-      } catch (err) {
-        setAlumetalError(
-          err instanceof Error ? err.message : "Error al leer el archivo"
-        );
-      }
+      })();
     };
     reader.readAsText(file, "utf-8");
     e.target.value = "";
@@ -357,7 +390,7 @@ function ChunkImportSectionInner({
               accept=".json,application/json"
               onChange={handleAlumetalFile}
               className={styles.hiddenInput}
-              aria-label="Cargar JSON Alumetal, Todo Proyectable o Edify"
+              aria-label="Cargar JSON de scrapers (Alumetal, Todo Proyectable, Edify, Moreno)"
             />
             <button
               type="button"
@@ -365,7 +398,9 @@ function ChunkImportSectionInner({
               onClick={() => fileInputRef.current?.click()}
               disabled={categorizing}
             >
-              Cargar desde JSON (Alumetal / Todo Proyectable / Edify)
+              {categorizing
+                ? "Categorizando con LLM..."
+                : "Cargar desde JSON (scrapers)"}
             </button>
             <span className={styles.toolbarSep}>o</span>
             <button

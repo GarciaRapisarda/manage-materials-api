@@ -15,7 +15,10 @@
     "scrape:todoproyectable:categories": "tsx scripts/scrape-todoproyectable.ts categories",
     "scrape:edify": "tsx scripts/scrape-edify.ts all",
     "scrape:edify:test": "tsx scripts/scrape-edify.ts test",
-    "scrape:edify:categories": "tsx scripts/scrape-edify.ts categories"
+    "scrape:edify:categories": "tsx scripts/scrape-edify.ts categories",
+    "scrape:moreno": "tsx scripts/scrape-materiales-moreno.ts all",
+    "scrape:moreno:test": "tsx scripts/scrape-materiales-moreno.ts test",
+    "scrape:moreno:categories": "tsx scripts/scrape-materiales-moreno.ts categories"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

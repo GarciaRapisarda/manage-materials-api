@@ -1,30 +1,9 @@
 import type { ParsedMaterial } from "./chunk-parser";
 import type { Material } from "@/types/material";
-
-const ACCENT_MAP: Record<string, string> = {
-  á: "a",
-  é: "e",
-  í: "i",
-  ó: "o",
-  ú: "u",
-  ñ: "n",
-  Á: "a",
-  É: "e",
-  Í: "i",
-  Ó: "o",
-  Ú: "u",
-  Ñ: "n",
-};
+import { normalizeForMaterialMatch } from "./material-name-match";
 
 export function normalizeForMatch(name: string): string {
-  let s = name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ");
-  for (const [accent, plain] of Object.entries(ACCENT_MAP)) {
-    s = s.replace(new RegExp(accent, "g"), plain);
-  }
-  return s;
+  return normalizeForMaterialMatch(name);
 }
 
 export type ChunkPreviewAction = "update" | "create" | "skip";
@@ -55,9 +34,18 @@ export function matchChunkToMaterials(
     const p = parsed[i];
     const key = normalizeForMatch(p.name);
     const matches = byNormalized.get(key) ?? [];
-    const best = matches.length > 0
-      ? [...matches].sort((a, b) => Number(a.id) - Number(b.id))[0]
-      : null;
+    const best =
+      matches.length > 0
+        ? [...matches].sort((a, b) => {
+            const ta = new Date(a.updated_at).getTime();
+            const tb = new Date(b.updated_at).getTime();
+            if (tb !== ta) return tb - ta;
+            const na = Number(a.id);
+            const nb = Number(b.id);
+            if (!Number.isNaN(na) && !Number.isNaN(nb)) return nb - na;
+            return b.id.localeCompare(a.id, undefined, { numeric: true });
+          })[0]
+        : null;
 
     let action: ChunkPreviewAction = best ? "update" : "create";
     if (best && p.price != null && Math.abs(p.price - best.price) < 0.01) {
