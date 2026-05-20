@@ -21,7 +21,7 @@ Debe pensarse para correr localmente durante el desarrollo.
 Construir la base de una aplicación frontend que permita:
 
 1. Obtener el listado completo de materiales desde:
-   `baseUrl/materials/all`
+   `baseUrl/category/all` (categorías) y `baseUrl/category/materials/:id` (materiales por categoría). Import masivo usa `baseUrl/materials/all` solo para comparar nombres.
 
 2. Mostrar esos materiales en una vista tipo tabla o listado administrable.
 
@@ -57,7 +57,7 @@ Primero dejar bien creada la base del proyecto, su arquitectura, la pantalla ini
 Implementar solo lo básico:
 
 - una pantalla principal de administración de materiales
-- fetch del endpoint `baseUrl/materials/all`
+- fetch de categorías y materiales por categoría en la vista principal; `materials/all` solo al importar JSON
 - manejo de loading
 - manejo de error
 - render del array `data`

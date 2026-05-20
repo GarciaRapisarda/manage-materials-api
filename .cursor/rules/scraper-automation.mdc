@@ -1,0 +1,73 @@
+---
+description: Flujo estándar para scrapers, mapeo de categorías con LLM e import de materiales
+globs: scripts/scrape-*.ts,scripts/map-categories-llm.ts,scripts/*-category-map.ts,scripts/load-*-mapping.ts,scripts/output/*-category-mapping.csv
+alwaysApply: false
+---
+
+# Automatización de scrapers y categorías
+
+Referencia humana completa: `README.md` → sección **Flujo estándar de scrapers**.
+
+## Principio
+
+Dos capas de categorización (no confundir):
+
+1. **Mapeo previo (por categoría de tienda)** — una vez por origen, en lotes LLM (~200 hojas, no miles de productos). Salida: `scripts/{origen}-category-mapping.json` con nombres exactos de `docs/categorias-llm-contexto.md`.
+2. **Categorización al import (por material)** — en la app vía `/api/categorize` y `ChunkImportSection`; usa `sourceCategory` del JSON como contexto. No reemplaza el paso 1.
+
+No pedir al usuario completar `myCategory` a mano en CSV si existe `map:{origen}:categories`.
+
+## Al agregar o extender un scraper
+
+Implementar modos CLI alineados a Merlino/Ropelato:
+
+| Modo | Función |
+|------|---------|
+| `categories` | Descubrir árbol → `{origen}-categories.json` + CSV con `myCategory` vacío |
+| `mapping-check` | Contar hojas con `myCategory` listas para scrape |
+| `test` | Una categoría hoja, pocas páginas |
+| `all` | Todas las hojas mapeadas |
+
+Reglas de scrape:
+
+- Solo categorías **hoja** (`hasChildren=false`). Nunca scrapear padres (duplica productos).
+- `sourceCategory` en materials JSON = nombre interno mapeado (`myCategory`), no el slug de la tienda.
+- Salida: `scripts/output/{origen}-products-{suffix}.json` y `{origen}-materials-{suffix}.json`.
+- Formato materials compatible con `lib/alumetal-importer.ts`: `name`, `price`, `unit`, `sourceCategory`, `sourceUrl`, `sourceProductId`, `scrapedAt`.
+- Sin comentarios en código. CSS Modules en app; scrapers usan `fetch` + Cheerio.
+- `DELAY_MS` entre requests; User-Agent de navegador.
+
+## Mapeo LLM de categorías
+
+Script: `scripts/map-categories-llm.ts`.
+
+Registrar en `scripts/map-categories-llm.ts` (`SOURCES`) y `npm run map:{origen}:categories`. Orígenes: ropelato, merlino (árbol hojas); alumetal, edify, moreno, todoproyectable (lista plana). Pendientes: `npm run map:categories:pending`. Solo remapea slugs sin nombre interno válido en `docs/categorias-llm-contexto.md`; `--force` remapea todo.
+
+Al sumar origen con árbol JSON (`slug`, `name`, `parentSlug`, `hasChildren`):
+
+1. Registrar en `SOURCES` con `mode: tree-leaves`.
+2. Añadir `npm run map:{origen}:categories` en `package.json`.
+3. Breadcrumb para contexto LLM: cadena padre → hijo desde el JSON.
+4. Tras `categories`, el usuario corre `map:{origen}:categories` antes de `scrape:{origen}`.
+
+Parser de categorías válidas desde `docs/categorias-llm-contexto.md`: líneas `### N | Nombre`; normalizar `\r\n` en Windows.
+
+## Archivos por origen
+
+- `scripts/scrape-{origen}.ts` — scrape principal
+- `scripts/{origen}-category-map.ts` — defaults opcionales (pruebas)
+- `scripts/load-{origen}-mapping.ts` — prioridad: `scripts/{origen}-category-mapping.json` → CSV en `output/` → defaults del `.ts`
+- `scripts/output/{origen}-categories.json`, `{origen}-category-mapping.csv`
+
+## Probar antes de “all”
+
+1. `scrape:{origen}:categories`
+2. `map:{origen}:categories` → verificar `mapping-check` (~todas las hojas, no 2–3)
+3. `scrape:{origen}:test`
+4. `scrape:{origen}`
+
+Si `all` scrapea pocas categorías, casi siempre falta el paso de mapeo LLM.
+
+## App (import)
+
+JSON materials → import en UI → LLM asigna `categoryId` + unidad. `resolveCategoryId` matchea por nombre si `sourceCategory` ya es categoría interna.

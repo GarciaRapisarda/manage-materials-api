@@ -21,11 +21,13 @@ function DuplicateGroupCell({
   group,
   isKept,
   isSelected,
+  selectedIds,
 }: {
   currentId: string;
   group: DuplicateGroupInfo;
   isKept: boolean;
   isSelected: boolean;
+  selectedIds: Set<string>;
 }) {
   const sortedIds = [...group.ids].sort((a, b) => {
     const na = Number(a);
@@ -33,12 +35,16 @@ function DuplicateGroupCell({
     if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
     return a.localeCompare(b, undefined, { numeric: true });
   });
+  const selectedInGroup = sortedIds.filter((id) => selectedIds.has(id)).length;
+
   return (
     <span className={styles.duplicateInfo}>
       {isKept ? (
         <span className={styles.keptBadge}>Se conserva (más reciente)</span>
       ) : isSelected ? (
         <span className={styles.toDeleteBadge}>Para eliminar</span>
+      ) : selectedInGroup > 0 ? (
+        <span className={styles.inGroupBadge}>Mismo nombre en grupo</span>
       ) : null}
       <span className={styles.duplicateCount}>{group.count} en grupo</span>
       <span className={styles.duplicateIds}>
@@ -48,6 +54,8 @@ function DuplicateGroupCell({
             {i > 0 && ", "}
             {id === currentId ? (
               <strong className={styles.currentId}>{id}</strong>
+            ) : selectedIds.has(id) ? (
+              <strong className={styles.selectedInGroupId}>{id}</strong>
             ) : (
               id
             )}
@@ -167,6 +175,7 @@ function MaterialsTableInner({
                       group={group}
                       isKept={duplicateToKeep.has(m.id)}
                       isSelected={selectedIds.has(m.id)}
+                      selectedIds={selectedIds}
                     />
                   ) : (
                     <span className={styles.noDuplicate}>—</span>

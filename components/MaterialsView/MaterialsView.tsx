@@ -11,11 +11,18 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredToken, clearStoredToken } from "@/lib/auth";
-import { fetchAllMaterials, deleteMaterial, patchMaterial, createMaterial } from "@/services/materials";
+import {
+  fetchMaterialsByCategory,
+  deleteMaterial,
+  patchMaterial,
+  createMaterial,
+} from "@/services/materials";
 import { fetchCategories } from "@/services/categories";
 import {
   getDuplicateGroupsByNormalizedName,
   getDuplicateCleanupSelection,
+  countDuplicateGroups,
+  mergeDuplicateGroupsForSelection,
 } from "@/lib/duplicates";
 import { MaterialsTable } from "@/components/MaterialsTable/MaterialsTable";
 import { EditMaterialModal } from "@/components/EditMaterialModal/EditMaterialModal";
@@ -67,10 +74,32 @@ export function MaterialsView() {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [addingMaterial, setAddingMaterial] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [materialsLoading, setMaterialsLoading] = useState(false);
   const [isFilterPending, startFilterTransition] = useTransition();
   const deferredSearch = useDeferredValue(search);
   const deferredQuickFilters = useDeferredValue(quickFilters);
   const filteredMaterialsRef = useRef<Material[]>([]);
+
+  const reloadCurrentCategory = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token || !selectedCategoryId) return;
+    setMaterialsLoading(true);
+    try {
+      const res = await fetchMaterialsByCategory(selectedCategoryId, token);
+      setMaterials(res.data);
+      setError(null);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("401")) {
+        clearStoredToken();
+        router.replace("/login");
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Error al cargar materiales");
+    } finally {
+      setMaterialsLoading(false);
+    }
+  }, [router, selectedCategoryId]);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -78,10 +107,17 @@ export function MaterialsView() {
       router.replace("/login");
       return;
     }
-    fetchAllMaterials(token)
+    fetchCategories(token)
       .then((res) => {
-        setMaterials(res.data);
+        const cats = res.data ?? [];
+        setCategories(cats);
         setError(null);
+        if (cats.length > 0) {
+          setSelectedCategoryId(cats[0].id);
+        } else {
+          setMaterials([]);
+          setLoading(false);
+        }
       })
       .catch((err) => {
         if (err instanceof Error && err.message.includes("401")) {
@@ -89,14 +125,61 @@ export function MaterialsView() {
           router.replace("/login");
           return;
         }
-        setError(err instanceof Error ? err.message : "Error al cargar");
-      })
-      .finally(() => setLoading(false));
-
-    fetchCategories(token)
-      .then((res) => setCategories(res.data ?? []))
-      .catch(() => setCategories([]));
+        setError(err instanceof Error ? err.message : "Error al cargar categorías");
+        setLoading(false);
+      });
   }, [router]);
+
+  useEffect(() => {
+    if (!selectedCategoryId) return;
+    const token = getStoredToken();
+    if (!token) return;
+
+    let cancelled = false;
+    setMaterialsLoading(true);
+    setMaterials(null);
+    setSelectedIds(new Set());
+    setDeleteResult(null);
+
+    fetchMaterialsByCategory(selectedCategoryId, token)
+      .then((res) => {
+        if (cancelled) return;
+        setMaterials(res.data);
+        setError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof Error && err.message.includes("401")) {
+          clearStoredToken();
+          router.replace("/login");
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Error al cargar materiales");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setMaterialsLoading(false);
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId, router]);
+
+  const handleCategoryChange = useCallback((categoryId: string) => {
+    startFilterTransition(() => {
+      setSearch("");
+      setQuickFilters({
+        onlyDuplicates: false,
+        noBrand: false,
+        noDescription: false,
+        noPrice: false,
+        onlyUnquoted: false,
+      });
+      setSelectedCategoryId(categoryId);
+    });
+  }, []);
 
   const duplicateGroups = useMemo(
     () =>
@@ -104,6 +187,21 @@ export function MaterialsView() {
         ? getDuplicateGroupsByNormalizedName(materials)
         : new Map<string, { count: number; ids: string[] }>(),
     [materials]
+  );
+
+  const displayDuplicateGroups = useMemo(
+    () =>
+      mergeDuplicateGroupsForSelection(
+        duplicateGroups,
+        materials ?? [],
+        selectedIds
+      ),
+    [duplicateGroups, materials, selectedIds]
+  );
+
+  const duplicateGroupCount = useMemo(
+    () => countDuplicateGroups(displayDuplicateGroups),
+    [displayDuplicateGroups]
   );
 
   const { toSelect: duplicateToSelect, toKeep: duplicateToKeep } = useMemo(
@@ -121,7 +219,7 @@ export function MaterialsView() {
       result = result.filter((m) => m.name.toLowerCase().includes(lower));
     }
     if (deferredQuickFilters.onlyDuplicates) {
-      result = result.filter((m) => duplicateGroups.has(m.id));
+      result = result.filter((m) => displayDuplicateGroups.has(m.id));
     }
     if (deferredQuickFilters.noBrand) {
       result = result.filter((m) => !m.brand || m.brand.trim() === "");
@@ -136,7 +234,7 @@ export function MaterialsView() {
       result = result.filter((m) => m.unquoted);
     }
     return result;
-  }, [materials, deferredSearch, deferredQuickFilters, duplicateGroups]);
+  }, [materials, deferredSearch, deferredQuickFilters, displayDuplicateGroups]);
 
   filteredMaterialsRef.current = filteredMaterials;
 
@@ -169,13 +267,13 @@ export function MaterialsView() {
   }, []);
 
   const handleChunkImportSuccess = useCallback(() => {
-    const token = getStoredToken();
-    if (token) {
-      fetchAllMaterials(token).then((res) => setMaterials(res.data));
-    }
-  }, []);
+    void reloadCurrentCategory();
+  }, [reloadCurrentCategory]);
 
   function selectDuplicatesForCleanup() {
+    startFilterTransition(() => {
+      setQuickFilters((prev) => ({ ...prev, onlyDuplicates: true }));
+    });
     setSelectedIds(new Set(duplicateToSelect));
     setDeleteResult(null);
   }
@@ -189,9 +287,10 @@ export function MaterialsView() {
     []
   );
 
-  function exportAll(format: "csv" | "xlsx") {
+  function exportCategory(format: "csv" | "xlsx") {
     if (!materials) return;
-    const fn = getExportFilename("materiales-todos", format);
+    const slug = selectedCategory?.name ?? selectedCategoryId;
+    const fn = getExportFilename(`materiales-${slug}`, format);
     if (format === "xlsx") downloadExcel(materials, fn);
     else downloadCSV(materials, fn);
   }
@@ -247,11 +346,7 @@ export function MaterialsView() {
       return next;
     });
 
-    const tokenCheck = getStoredToken();
-    if (tokenCheck) {
-      const res = await fetchAllMaterials(tokenCheck);
-      setMaterials(res.data);
-    }
+    await reloadCurrentCategory();
   }
 
   async function handleCreateMaterial(body: {
@@ -265,7 +360,9 @@ export function MaterialsView() {
     const token = getStoredToken();
     if (!token) return;
     const created = await createMaterial(body, token);
-    setMaterials((prev) => (prev ? [created, ...prev] : [created]));
+    if (body.categoryId === selectedCategoryId) {
+      setMaterials((prev) => (prev ? [created, ...prev] : [created]));
+    }
   }
 
   async function handleSaveMaterial(
@@ -323,9 +420,10 @@ export function MaterialsView() {
     );
   }
 
-  if (!materials) return null;
+  if (!materials && !materialsLoading) return null;
 
-  const duplicateCount = duplicateGroups.size;
+  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
+  const duplicateMaterialCount = displayDuplicateGroups.size;
   const selectedCount = selectedIds.size;
   const isProcessingFilters =
     isFilterPending ||
@@ -334,7 +432,7 @@ export function MaterialsView() {
   const hasActiveFilters =
     search.trim() !== "" || Object.values(quickFilters).some(Boolean);
   const visibleCount = filteredMaterials.length;
-  const totalCount = materials.length;
+  const totalCount = materials?.length ?? 0;
 
   return (
     <main className={styles.main}>
@@ -342,11 +440,14 @@ export function MaterialsView() {
         <div>
           <h1 className={styles.title}>Administración de Materiales</h1>
           <p className={styles.subtitle}>
+            {selectedCategory ? `${selectedCategory.name} · ` : ""}
             {hasActiveFilters
-              ? `${visibleCount.toLocaleString("es-AR")} de ${totalCount.toLocaleString("es-AR")} materiales visibles`
-              : `${totalCount.toLocaleString("es-AR")} material${totalCount !== 1 ? "es" : ""}`}
-            {duplicateCount > 0 && ` · ${duplicateCount} duplicado${duplicateCount > 1 ? "s" : ""}`}
+              ? `${visibleCount.toLocaleString("es-AR")} de ${totalCount.toLocaleString("es-AR")} visibles`
+              : `${totalCount.toLocaleString("es-AR")} en categoría`}
+            {duplicateMaterialCount > 0 &&
+              ` · ${duplicateGroupCount} grupo${duplicateGroupCount !== 1 ? "s" : ""} (${duplicateMaterialCount} materiales)`}
             {selectedCount > 0 && ` · ${selectedCount} seleccionado${selectedCount > 1 ? "s" : ""}`}
+            {materialsLoading && " · cargando..."}
           </p>
         </div>
         <button
@@ -360,11 +461,26 @@ export function MaterialsView() {
         </button>
       </header>
       <ChunkImportSection
-        materials={materials}
         categories={categories}
         onSuccess={handleChunkImportSuccess}
       />
       <div className={styles.toolbar}>
+        <label className={styles.categoryField}>
+          <span className={styles.categoryLabel}>Categoría</span>
+          <select
+            className={styles.categorySelect}
+            value={selectedCategoryId}
+            onChange={(e) => handleCategoryChange(e.target.value)}
+            disabled={materialsLoading || categories.length === 0}
+            aria-label="Categoría de materiales"
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <input
           type="search"
           placeholder="Buscar por nombre..."
@@ -437,7 +553,7 @@ export function MaterialsView() {
         )}
         <button
           onClick={selectDuplicatesForCleanup}
-          disabled={duplicateGroups.size === 0}
+          disabled={duplicateGroupCount === 0}
           className={styles.selectDuplicatesBtn}
           title="En cada grupo duplicado se conserva el menor ID; el resto queda seleccionado para eliminar"
         >
@@ -452,16 +568,16 @@ export function MaterialsView() {
         </button>
         <div className={styles.exportGroup}>
           <div className={styles.exportDropdown}>
-            <span className={styles.exportLabel}>Exportar todo:</span>
+            <span className={styles.exportLabel}>Exportar categoría:</span>
             <button
-              onClick={() => exportAll("csv")}
+              onClick={() => exportCategory("csv")}
               className={styles.exportBtn}
               title="CSV compatible con Excel"
             >
               CSV
             </button>
             <button
-              onClick={() => exportAll("xlsx")}
+              onClick={() => exportCategory("xlsx")}
               className={styles.exportBtn}
               title="Formato Excel nativo"
             >
@@ -520,13 +636,13 @@ export function MaterialsView() {
       )}
       <MaterialsTable
         materials={filteredMaterials}
-        duplicateGroups={duplicateGroups}
+        duplicateGroups={displayDuplicateGroups}
         duplicateToKeep={duplicateToKeep}
         selectedIds={selectedIds}
         onToggleSelection={toggleSelection}
         onSelectAll={selectAll}
         onEdit={handleEditMaterial}
-        isProcessing={isProcessingFilters}
+        isProcessing={isProcessingFilters || materialsLoading}
       />
       <EditMaterialModal
         material={editingMaterial}

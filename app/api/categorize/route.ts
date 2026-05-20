@@ -1,58 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync } from "fs";
 import { join } from "path";
+import {
+  applyRuleOverrides,
+  normalizeImportUnit,
+} from "@/lib/import-categorization";
 
 const VALID_UNITS = ["kg", "gr", "mt", "cm", "l", "ml", "m2", "cm2", "m3", "cm3", "u"];
 const BATCH_SIZE = 15;
-
-function applyRuleOverrides(
-  name: string,
-  llmCategoryId: string,
-  llmUnit: string
-): { categoryId: string; unit: string } {
-  const n = name.toLowerCase();
-  let cat = llmCategoryId;
-  let unit = llmUnit;
-
-  if (/\bcemento\b|\bcal\s+(viva|hidratada|hidr)/i.test(n)) {
-    cat = "5";
-    if (/\bx\s*(\d+)\s*kg\b/i.test(n)) unit = "u";
-    else if (/\bx\s*kg\b/i.test(n)) unit = "kg";
-  }
-  if (/\bchapa\s+acanalada|\bchapa\s+trapezoidal|\bchapa\s+cinzalum|\bcincalum\b/i.test(n) && /\bx\s*m\b/i.test(n)) {
-    cat = "10";
-    unit = "mt";
-  }
-  if (/\bcaño\s+estructural\b/i.test(n)) {
-    cat = "17";
-    if (/\bx\s*kg\b/i.test(n)) unit = "kg";
-  }
-  if (/\blana\s+de\s+vidrio\b/i.test(n) && /\bm2\b|x\s*m2/i.test(n)) {
-    cat = "1";
-    unit = "m2";
-  }
-  if (/\bsplit\b/i.test(n) && !/\b(calefacción|radiador)\b/i.test(n)) {
-    cat = "14";
-    unit = "u";
-  }
-  if (/\bcalefactor\b|\bsombrilla\s+a\s*gas\b/i.test(n)) {
-    cat = "26";
-  }
-  if (/\bhidrófugo\b|\bhidrofugo\b/i.test(n)) {
-    cat = "1";
-    if (/\bx\s*(\d+)\s*kg\b/i.test(n)) unit = "u";
-  }
-  if (/\bporcelanato\b|\bcerámico\b.*\d+\s*x\s*\d+|\bpiso\s+vinílico\b|\bpiso\s+flotante\b/i.test(n) && !/\bmuro\b|\bportante\b|\btabique\b|\bdoble\s+muro\b/i.test(n)) {
-    cat = "25";
-    if (/\bm2\b|x\s*m2|\/\s*m2/i.test(n)) unit = "m2";
-  }
-  if (/\bcerámico\s+rosario\b|\badoquín\b|\bbrimax\b|\bsphan\s*-?\s*c\/u/i.test(n) || (/\bcerámico\b|\bladrillo\b|\bbloque\b/i.test(n) && /\bmuro\b|\bportante\b|\btabique\b|\bc\/u\b/i.test(n))) {
-    cat = "21";
-    unit = "u";
-  }
-
-  return { categoryId: cat, unit };
-}
 
 function getCategoriasDoc(): string {
   const path = join(process.cwd(), "docs", "categorias-llm-contexto.md");
@@ -173,9 +128,7 @@ Formato: [{"categoryId":"21","unit":"u"}, ...]`;
       if (p && typeof p === "object") {
         const row = p as { categoryId?: string; category_id?: string; unit?: string };
         catId = String(row.categoryId ?? row.category_id ?? "1").trim();
-        unit = String(row.unit ?? "u").toLowerCase().trim();
-        if (unit === "m") unit = "mt";
-        if (!VALID_UNITS.includes(unit)) unit = "u";
+        unit = normalizeImportUnit(String(row.unit ?? "u"));
       }
       const corrected = applyRuleOverrides(item.name, catId || "1", unit);
       results.push(corrected);

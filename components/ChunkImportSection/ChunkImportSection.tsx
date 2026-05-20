@@ -4,11 +4,23 @@ import { useState, useRef, memo } from "react";
 import { parseChunk } from "@/lib/chunk-parser";
 import {
   matchChunkToMaterials,
+  isPendingMaterialId,
   type ChunkPreviewItem,
 } from "@/lib/chunk-matcher";
 import { alumetalToParsed, type AlumetalMaterial } from "@/lib/alumetal-importer";
-import { patchMaterial, createMaterial } from "@/services/materials";
-import { categorizeMaterials } from "@/services/categorize";
+import {
+  fetchAllMaterials,
+  patchMaterial,
+  createMaterial,
+} from "@/services/materials";
+import { enrichPreviewCreates } from "@/lib/chunk-import-enrich";
+import {
+  analyzeImportPreview,
+  estimateLlmMinutes,
+  IMPORT_PREVIEW_ROW_CAP,
+  LARGE_IMPORT_THRESHOLD,
+  type ImportPlan,
+} from "@/lib/import-plan";
 import { getStoredToken } from "@/lib/auth";
 import { formatPrice } from "@/lib/formatters";
 import { isValidUnit, UNIT_OPTIONS } from "@/lib/units";
@@ -17,13 +29,11 @@ import type { Category } from "@/types/category";
 import styles from "./ChunkImportSection.module.css";
 
 interface ChunkImportSectionProps {
-  materials: Material[];
   categories: Category[];
   onSuccess: () => void;
 }
 
 function ChunkImportSectionInner({
-  materials,
   categories,
   onSuccess,
 }: ChunkImportSectionProps) {
@@ -33,6 +43,10 @@ function ChunkImportSectionInner({
   const [included, setIncluded] = useState<Set<number>>(new Set());
   const [categorizing, setCategorizing] = useState(false);
   const [categorizeError, setCategorizeError] = useState<string | null>(null);
+  const [categorizeStatus, setCategorizeStatus] = useState<string | null>(null);
+  const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
+  const [categoriesAssigned, setCategoriesAssigned] = useState(false);
+  const [executeProgress, setExecuteProgress] = useState<string | null>(null);
   const [previewFilter, setPreviewFilter] = useState<"all" | "create" | "update">("all");
   const [executing, setExecuting] = useState(false);
   const [execResult, setExecResult] = useState<{
@@ -42,6 +56,21 @@ function ChunkImportSectionInner({
   } | null>(null);
   const [alumetalError, setAlumetalError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const matchMaterialsRef = useRef<Material[] | null>(null);
+
+  async function getMaterialsForMatch(): Promise<Material[]> {
+    if (matchMaterialsRef.current) {
+      return matchMaterialsRef.current;
+    }
+    const token = getStoredToken();
+    if (!token) {
+      throw new Error("Sin sesión");
+    }
+    setCategorizeStatus("Cargando materiales para comparar...");
+    const res = await fetchAllMaterials(token);
+    matchMaterialsRef.current = res.data;
+    return res.data;
+  }
 
   function normalizeCategoryName(s: string): string {
     return s
@@ -63,6 +92,71 @@ function ChunkImportSectionInner({
         normalizeCategoryName(cat.name) === normalized
     );
     return c?.id ?? "";
+  }
+
+  function getFallbackCategoryId(): string {
+    return categories.length > 0
+      ? resolveCategoryId("Otros") || categories[0].id
+      : "";
+  }
+
+  async function assignCategories(itemsPreview: ChunkPreviewItem[]) {
+    const toCreateCount = itemsPreview.filter((p) => p.action === "create").length;
+    if (toCreateCount === 0) {
+      setCategoriesAssigned(true);
+      return itemsPreview;
+    }
+
+    setCategorizing(true);
+    setCategorizeError(null);
+    setCategorizeStatus("Asignando categorías...");
+    try {
+      const enriched = await enrichPreviewCreates(
+        itemsPreview,
+        resolveCategoryId,
+        getFallbackCategoryId(),
+        setCategorizeStatus
+      );
+      if (enriched.llmCount > 0) {
+        setCategorizeStatus(
+          `${enriched.mappedCount} por sourceCategory · ${enriched.llmCount} con LLM`
+        );
+      } else {
+        setCategorizeStatus(
+          `${enriched.mappedCount} por sourceCategory (sin LLM)`
+        );
+      }
+      setCategoriesAssigned(true);
+      return enriched.items;
+    } catch (err) {
+      setCategorizeError(
+        err instanceof Error ? err.message : "Error al categorizar"
+      );
+      setCategorizeStatus(null);
+      setCategoriesAssigned(false);
+      return itemsPreview;
+    } finally {
+      setCategorizing(false);
+    }
+  }
+
+  async function prepareImportPreview(itemsPreview: ChunkPreviewItem[]) {
+    const plan = analyzeImportPreview(itemsPreview, resolveCategoryId);
+    setImportPlan(plan);
+    setPreview(itemsPreview);
+    setIncluded(new Set(itemsPreview.map((_, i) => i)));
+    setExecResult(null);
+    setCategoriesAssigned(false);
+
+    const needsConfirm =
+      plan.createsNeedLlm > 0 && plan.total >= LARGE_IMPORT_THRESHOLD;
+    if (needsConfirm) {
+      setCategorizeStatus(null);
+      return;
+    }
+
+    const withCategory = await assignCategories(itemsPreview);
+    setPreview(withCategory);
   }
 
   function handleAlumetalFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -95,58 +189,9 @@ function ChunkImportSectionInner({
             return;
           }
           const parsed = alumetalToParsed(items);
-          const itemsPreview = matchChunkToMaterials(parsed, materials);
-          const fallbackCategoryId =
-            categories.length > 0
-              ? resolveCategoryId("Otros") || categories[0].id
-              : "";
-          const toCreate = itemsPreview.filter((p) => p.action === "create");
-          let llmResults: Awaited<ReturnType<typeof categorizeMaterials>> = [];
-          if (toCreate.length > 0) {
-            setCategorizing(true);
-            setCategorizeError(null);
-            try {
-              llmResults = await categorizeMaterials(
-                toCreate.map((p) => ({
-                  name: p.parsed.name,
-                  sectionContext: p.parsed.sectionContext,
-                }))
-              );
-            } catch (err) {
-              setCategorizeError(
-                err instanceof Error ? err.message : "Error al categorizar"
-              );
-            } finally {
-              setCategorizing(false);
-            }
-          }
-          let createIndex = 0;
-          const withCategory = itemsPreview.map((item) => {
-            if (item.action !== "create") return item;
-            const r = llmResults[createIndex++];
-            if (r) {
-              return {
-                ...item,
-                llmResult: {
-                  categoryId: r.categoryId,
-                  unit: r.unit || item.parsed.unit || "u",
-                },
-              };
-            }
-            const catId =
-              resolveCategoryId(item.parsed.sectionContext ?? "") ||
-              fallbackCategoryId;
-            return {
-              ...item,
-              llmResult: {
-                categoryId: catId,
-                unit: item.parsed.unit ?? "u",
-              },
-            };
-          });
-          setPreview(withCategory);
-          setIncluded(new Set(withCategory.map((_, i) => i)));
-          setExecResult(null);
+          const matchMaterials = await getMaterialsForMatch();
+          const itemsPreview = matchChunkToMaterials(parsed, matchMaterials);
+          await prepareImportPreview(itemsPreview);
         } catch (err) {
           setAlumetalError(
             err instanceof Error ? err.message : "Error al leer el archivo"
@@ -159,42 +204,23 @@ function ChunkImportSectionInner({
   }
 
   async function handleParse() {
-    const parsed = parseChunk(chunkText);
-    const items = matchChunkToMaterials(parsed, materials);
-    setPreview(items);
-    setIncluded(new Set(items.map((_, i) => i)));
-    setExecResult(null);
     setCategorizeError(null);
-
-    const toCreate = items.filter((p) => p.action === "create");
-    if (toCreate.length > 0) {
-      setCategorizing(true);
-      try {
-        const results = await categorizeMaterials(
-          toCreate.map((p) => ({
-            name: p.parsed.name,
-            sectionContext: p.parsed.sectionContext,
-          }))
-        );
-        setPreview((prev) => {
-          if (!prev) return prev;
-          const createIndices = prev
-            .map((p, i) => (p.action === "create" ? i : -1))
-            .filter((i) => i >= 0);
-          return prev.map((item, i) => {
-            const idx = createIndices.indexOf(i);
-            if (idx >= 0 && results[idx]) {
-              return { ...item, llmResult: results[idx] };
-            }
-            return item;
-          });
-        });
-      } catch (e) {
-        setCategorizeError(e instanceof Error ? e.message : "Error al categorizar");
-      } finally {
-        setCategorizing(false);
-      }
+    try {
+      const parsed = parseChunk(chunkText);
+      const matchMaterials = await getMaterialsForMatch();
+      const items = matchChunkToMaterials(parsed, matchMaterials);
+      await prepareImportPreview(items);
+    } catch (err) {
+      setCategorizeError(
+        err instanceof Error ? err.message : "Error al comparar con la API"
+      );
     }
+  }
+
+  async function handleAssignCategoriesClick() {
+    if (!preview) return;
+    const withCategory = await assignCategories(preview);
+    setPreview(withCategory);
   }
 
   function toggleInclude(index: number) {
@@ -289,6 +315,7 @@ function ChunkImportSectionInner({
 
     for (const item of toUpdate) {
       if (!item.matchedMaterial || item.parsed.price == null) continue;
+      if (isPendingMaterialId(item.matchedMaterial.id)) continue;
       try {
         await patchMaterial(
           item.matchedMaterial.id,
@@ -302,41 +329,56 @@ function ChunkImportSectionInner({
       }
     }
 
-    if (!failed) {
+    if (!failed && toCreate.length > 0) {
       const fallbackCategoryId = categories[0]?.id ?? "";
-      for (const item of toCreate) {
-        const catId = getEffectiveCategoryId(item);
-        const unitVal = getEffectiveUnit(item);
-        const categoryId =
-          categories.find(
-            (c) =>
-              c.id === catId ||
-              String(Number(c.id)) === catId
-          )?.id ?? fallbackCategoryId;
-        const unit = unitVal && isValidUnit(unitVal) ? unitVal : "u";
-        try {
-          await createMaterial(
-            {
-              categoryId,
-              name: getEffectiveName(item),
-              description: item.parsed.sectionContext ?? "",
-              price: item.parsed.price ?? 0,
-              unit,
-              brand: "",
-            },
-            token
-          );
-          created++;
-        } catch (e) {
-          failed = item.parsed.name;
-          break;
-        }
-      }
+      const concurrency = 8;
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: concurrency }, async () => {
+          while (next < toCreate.length && !failed) {
+            const item = toCreate[next++];
+            const catId = getEffectiveCategoryId(item);
+            const unitVal = getEffectiveUnit(item);
+            const categoryId =
+              categories.find(
+                (c) =>
+                  c.id === catId ||
+                  String(Number(c.id)) === catId
+              )?.id ?? fallbackCategoryId;
+            const unit = unitVal && isValidUnit(unitVal) ? unitVal : "u";
+            try {
+              await createMaterial(
+                {
+                  categoryId,
+                  name: getEffectiveName(item),
+                  description: item.parsed.sectionContext ?? "",
+                  price: item.parsed.price ?? 0,
+                  unit,
+                  brand: "",
+                },
+                token
+              );
+              created++;
+              if (created % 50 === 0 || created === toCreate.length) {
+                setExecuteProgress(
+                  `Creando ${created}/${toCreate.length}...`
+                );
+              }
+            } catch {
+              failed = item.parsed.name;
+            }
+          }
+        })
+      );
     }
 
     setExecuting(false);
+    setExecuteProgress(null);
     setExecResult({ updated, created, failed });
-    if (!failed) onSuccess();
+    if (!failed) {
+      matchMaterialsRef.current = null;
+      onSuccess();
+    }
   }
 
   const updateCount = preview?.filter((p, i) => included.has(i) && p.action === "update").length ?? 0;
@@ -360,8 +402,19 @@ function ChunkImportSectionInner({
             ? item.action === "create"
             : item.action === "update"
         );
+  const previewTruncated = filteredPreview.length > IMPORT_PREVIEW_ROW_CAP;
+  const visiblePreview = previewTruncated
+    ? filteredPreview.slice(0, IMPORT_PREVIEW_ROW_CAP)
+    : filteredPreview;
   const includedCount = preview ? [...included].length : 0;
   const allIncluded = Boolean(preview && includedCount === preview.length);
+  const needsCategoryAssign = Boolean(
+    importPlan &&
+      importPlan.create > 0 &&
+      importPlan.createsNeedLlm > 0 &&
+      importPlan.total >= LARGE_IMPORT_THRESHOLD &&
+      !categoriesAssigned
+  );
 
   return (
     <section className={styles.section}>
@@ -432,11 +485,59 @@ function ChunkImportSectionInner({
 
               {categorizing && (
                 <p className={styles.categorizing}>
-                  Asignando categorías y unidades con LLM...
+                  {categorizeStatus ?? "Procesando..."}
                 </p>
+              )}
+              {!categorizing && categorizeStatus && (
+                <p className={styles.categorizing}>{categorizeStatus}</p>
               )}
               {categorizeError && (
                 <p className={styles.resultError}>{categorizeError}</p>
+              )}
+
+              {importPlan && (
+                <div className={styles.planBox}>
+                  <strong>Plan de importación</strong> ({importPlan.total}{" "}
+                  filas)
+                  <ul>
+                    <li>
+                      {importPlan.create} crear · {importPlan.update} actualizar
+                      · {importPlan.skip} sin cambios
+                    </li>
+                    <li>
+                      Categoría sin LLM: {importPlan.createsLocal} · con LLM:{" "}
+                      {importPlan.createsNeedLlm}
+                      {importPlan.createsNeedLlm > 0 &&
+                        ` (${importPlan.llmApiCalls} requests API · ${importPlan.llmOpenAiBatches} lotes OpenAI · ${estimateLlmMinutes(importPlan)} min aprox.)`}
+                    </li>
+                    {importPlan.createsNoContext > 0 && (
+                      <li>
+                        {importPlan.createsNoContext} sin sourceCategory (van a
+                        LLM)
+                      </li>
+                    )}
+                    {importPlan.unmatchedContexts.length > 0 && (
+                      <li>
+                        Contextos sin match en API:{" "}
+                        {importPlan.unmatchedContexts.join("; ")}
+                      </li>
+                    )}
+                  </ul>
+                  {needsCategoryAssign && (
+                    <div className={styles.planActions}>
+                      <button
+                        type="button"
+                        className={styles.assignBtn}
+                        onClick={() => void handleAssignCategoriesClick()}
+                        disabled={categorizing}
+                      >
+                        {categorizing
+                          ? "Asignando..."
+                          : `Asignar categorías (${importPlan.createsNeedLlm} con LLM)`}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               <div className={styles.previewWrapper}>
@@ -493,7 +594,7 @@ function ChunkImportSectionInner({
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPreview.map(({ item, i }) => (
+                      {visiblePreview.map(({ item, i }) => (
                         <tr key={i} className={styles.tr}>
                           <td className={styles.tdCheck}>
                             <input
@@ -620,6 +721,13 @@ function ChunkImportSectionInner({
                     </tbody>
                   </table>
                 </div>
+                {previewTruncated && (
+                  <p className={styles.previewNote}>
+                    Vista previa: primeras {IMPORT_PREVIEW_ROW_CAP} filas de{" "}
+                    {filteredPreview.length}. La ejecución aplica a los{" "}
+                    {includedCount} seleccionados del total ({preview.length}).
+                  </p>
+                )}
               </div>
 
               <div className={styles.execToolbar}>
@@ -630,13 +738,16 @@ function ChunkImportSectionInner({
                   disabled={
                     executing ||
                     categorizing ||
+                    needsCategoryAssign ||
                     includedCount === 0 ||
                     (createCount > 0 && !createsReady)
                   }
                 >
                   {executing
-                    ? "Ejecutando..."
-                    : `Ejecutar (${updateCount} actualizar, ${createCount} crear)`}
+                    ? executeProgress ?? "Ejecutando..."
+                    : needsCategoryAssign
+                      ? "Asigná categorías antes de ejecutar"
+                      : `Ejecutar (${updateCount} actualizar, ${createCount} crear)`}
                 </button>
               </div>
 

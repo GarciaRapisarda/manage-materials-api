@@ -8,6 +8,12 @@ export function normalizeForMatch(name: string): string {
 
 export type ChunkPreviewAction = "update" | "create" | "skip";
 
+const PENDING_ID_PREFIX = "__pending_";
+
+export function isPendingMaterialId(id: string): boolean {
+  return id.startsWith(PENDING_ID_PREFIX);
+}
+
 export interface ChunkPreviewItem {
   parsed: ParsedMaterial;
   action: ChunkPreviewAction;
@@ -33,7 +39,9 @@ export function matchChunkToMaterials(
   for (let i = 0; i < parsed.length; i++) {
     const p = parsed[i];
     const key = normalizeForMatch(p.name);
-    const matches = byNormalized.get(key) ?? [];
+    const matches = (byNormalized.get(key) ?? []).filter(
+      (m) => !isPendingMaterialId(m.id)
+    );
     const best =
       matches.length > 0
         ? [...matches].sort((a, b) => {
@@ -61,7 +69,7 @@ export function matchChunkToMaterials(
 
     if (action === "create") {
       const pending: Material = {
-        id: `__pending_${i}`,
+        id: `${PENDING_ID_PREFIX}${i}`,
         name: p.name,
         description: p.sectionContext ?? "",
         price: p.price ?? 0,

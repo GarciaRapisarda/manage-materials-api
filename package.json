@@ -19,12 +19,22 @@
     "scrape:moreno": "tsx scripts/scrape-materiales-moreno.ts all",
     "scrape:moreno:test": "tsx scripts/scrape-materiales-moreno.ts test",
     "scrape:moreno:categories": "tsx scripts/scrape-materiales-moreno.ts categories",
-    "scrape:sodimac:test": "tsx scripts/scrape-sodimac.ts test",
-    "scrape:sodimac:categories": "tsx scripts/scrape-sodimac.ts categories",
     "scrape:merlino:categories": "tsx scripts/scrape-merlino.ts categories",
     "scrape:merlino:mapping-check": "tsx scripts/scrape-merlino.ts mapping-check",
     "scrape:merlino:test": "tsx scripts/scrape-merlino.ts test",
-    "scrape:merlino": "tsx scripts/scrape-merlino.ts all"
+    "scrape:merlino": "tsx scripts/scrape-merlino.ts all",
+    "scrape:ropelato:categories": "tsx scripts/scrape-ropelato.ts categories",
+    "map:ropelato:categories": "tsx scripts/map-categories-llm.ts ropelato",
+    "scrape:ropelato:mapping-check": "tsx scripts/scrape-ropelato.ts mapping-check",
+    "scrape:ropelato:test": "tsx scripts/scrape-ropelato.ts test",
+    "scrape:ropelato": "tsx scripts/scrape-ropelato.ts all",
+    "map:merlino:categories": "tsx scripts/map-categories-llm.ts merlino",
+    "map:alumetal:categories": "tsx scripts/map-categories-llm.ts alumetal",
+    "map:todoproyectable:categories": "tsx scripts/map-categories-llm.ts todoproyectable",
+    "map:edify:categories": "tsx scripts/map-categories-llm.ts edify",
+    "map:moreno:categories": "tsx scripts/map-categories-llm.ts moreno",
+    "map:categories:pending": "tsx scripts/map-categories-llm.ts all-pending",
+    "analyze:import": "tsx scripts/analyze-import-json.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -40,7 +50,6 @@
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.1.0",
-    "playwright": "^1.60.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   }

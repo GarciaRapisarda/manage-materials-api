@@ -2,12 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as cheerio from "cheerio";
 import {
-  MERLINO_BASE,
-  MERLINO_CATEGORY_TREE_URL,
+  ROPELATO_BASE,
   CATEGORY_MAP,
   DELAY_MS,
-} from "./merlino-category-map";
-import { loadMerlinoMapping } from "./load-merlino-mapping";
+} from "./ropelato-category-map";
+import { loadRopelatoMapping } from "./load-ropelato-mapping";
 
 interface ScrapedProduct {
   name: string;
@@ -16,7 +15,7 @@ interface ScrapedProduct {
   url: string;
   productId: string;
   brand: string | null;
-  categoryMerlino: string;
+  categoryRopelato: string;
   categoryMapped: string;
 }
 
@@ -27,16 +26,9 @@ interface ScrapeTarget {
   categoryMapped: string;
 }
 
-const TEST_CATEGORY_SLUG = "materiales-gruesos-de-construccion/aridos";
+const TEST_CATEGORY_SLUG = "261-hierros-lisos";
 
-interface VtexCategoryNode {
-  id: number;
-  name: string;
-  url?: string;
-  children?: VtexCategoryNode[];
-}
-
-export interface MerlinoCategory {
+export interface RopelatoCategory {
   id: string;
   slug: string;
   name: string;
@@ -45,20 +37,6 @@ export interface MerlinoCategory {
   hasChildren: boolean;
   url: string;
   mappedTo?: string;
-}
-
-function slugFromUrl(url: string | undefined): string {
-  if (!url) return "";
-  try {
-    return new URL(url).pathname.replace(/^\//, "").replace(/\/$/, "");
-  } catch {
-    return "";
-  }
-}
-
-function parentSlugFromSlug(slug: string): string {
-  const i = slug.lastIndexOf("/");
-  return i >= 0 ? slug.slice(0, i) : "";
 }
 
 function delay(ms: number): Promise<void> {
@@ -72,8 +50,24 @@ function parsePrice(raw: string): number {
   return isNaN(num) ? 0 : num;
 }
 
+function slugFromHref(href: string): string {
+  if (!href) return "";
+  try {
+    const u = new URL(href, ROPELATO_BASE);
+    const m = u.pathname.match(/^\/(\d+-[^/]+)\/?$/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+}
+
+function idFromSlug(slug: string): string {
+  const m = slug.match(/^(\d+)-/);
+  return m ? m[1] : slug;
+}
+
 function categoryPageUrl(slug: string, page: number): string {
-  const base = `${MERLINO_BASE}/${slug}`;
+  const base = `${ROPELATO_BASE}/${slug}`;
   return page <= 1 ? base : `${base}?page=${page}`;
 }
 
@@ -91,84 +85,71 @@ async function fetchHtml(url: string): Promise<string> {
   return res.text();
 }
 
-function extractProductId(url: string, sku?: string): string {
-  if (sku) return String(sku);
-  const m = url.match(/\/([^/]+)\/p\/?$/i);
-  return m ? m[1] : "";
-}
-
 function parseProductsFromHtml(
   html: string,
   categorySlug: string,
   categoryMapped: string
 ): ScrapedProduct[] {
   const $ = cheerio.load(html);
-  const raw = $('script[type="application/ld+json"]')
-    .toArray()
-    .map((el) => $(el).html())
-    .find((t) => t?.includes('"ItemList"'));
-  if (!raw) return [];
-
-  let data: { itemListElement?: { item?: Record<string, unknown> }[] };
-  try {
-    data = JSON.parse(raw) as typeof data;
-  } catch {
-    return [];
-  }
-
   const products: ScrapedProduct[] = [];
-  for (const entry of data.itemListElement ?? []) {
-    const item = entry.item;
-    if (!item || item["@type"] !== "Product") continue;
 
-    const name = String(item.name ?? "").trim();
-    const url = String(item["@id"] ?? item.url ?? "").trim();
-    if (!name || !url) continue;
-
-    const offers = item.offers as
-      | { lowPrice?: number; highPrice?: number; offers?: { price?: number }[] }
-      | undefined;
-    let price = 0;
-    let priceList: number | null = null;
-    if (offers?.lowPrice != null) {
-      price = Number(offers.lowPrice);
-      const high = offers.highPrice != null ? Number(offers.highPrice) : null;
-      if (high != null && high > price) priceList = high;
-    } else if (offers?.offers?.[0]?.price != null) {
-      price = Number(offers.offers[0].price);
+  $(".js-product-miniature").each((_, el) => {
+    const $el = $(el);
+    const productId = String($el.attr("data-id-product") ?? "").trim();
+    const $link = $el.find("a[href*='.html']").first();
+    let url = ($link.attr("href") ?? "").trim();
+    if (url && !url.startsWith("http")) {
+      url = new URL(url, ROPELATO_BASE).href;
     }
-    if (price <= 0) continue;
+    const name = $el
+      .find(".product-title a, h3 a, .product-name a")
+      .first()
+      .text()
+      .trim();
+    const priceRaw = $el.find(".price, .current-price").first().text().trim();
+    const listRaw = $el.find(".regular-price").first().text().trim();
+    if (!name || !url || !productId) return;
 
-    const brandObj = item.brand as { name?: string } | undefined;
-    const brand = brandObj?.name?.trim() || null;
-    const sku = String(
-      (offers?.offers?.[0] as { sku?: string } | undefined)?.sku ??
-        (item.sku as string | undefined) ??
-        ""
-    );
+    const price = parsePrice(priceRaw);
+    if (price <= 0) return;
+
+    let priceList: number | null = null;
+    if (listRaw) {
+      const list = parsePrice(listRaw);
+      if (list > price) priceList = list;
+    }
+
+    const brand =
+      $el.find(".product-brand, .manufacturer-name").first().text().trim() ||
+      null;
 
     products.push({
       name,
       price,
       priceList,
       url: url.split("?")[0],
-      productId: extractProductId(url, sku),
+      productId,
       brand,
-      categoryMerlino: categorySlug,
+      categoryRopelato: categorySlug,
       categoryMapped,
     });
-  }
+  });
+
   return products;
 }
 
 function getTotalPages(html: string): number {
   const $ = cheerio.load(html);
   let max = 1;
-  const text = $("body").text();
-  const showing = text.match(/Mostrando\s+\d+\s+productos\s+de\s+(\d+)/i);
-  if (showing) {
-    const total = parseInt(showing[1], 10);
-    if (total > 0) max = Math.ceil(total / 30);
+  const countMatch = $("body")
+    .text()
+    .match(/(\d+)\s+productos/i);
+  if (countMatch) {
+    const total = parseInt(countMatch[1], 10);
+    const perPage = $(".js-product-miniature").length || 20;
+    if (total > 0 && perPage > 0) {
+      max = Math.max(max, Math.ceil(total / perPage));
+    }
   }
   $('a[href*="page="]').each((_, el) => {
     const href = $(el).attr("href") ?? "";
@@ -200,8 +181,9 @@ async function scrapeCategory(
       target.categoryMapped
     );
     for (const p of batch) {
-      if (seen.has(p.url)) continue;
-      seen.add(p.url);
+      const key = p.productId || p.url;
+      if (seen.has(key)) continue;
+      seen.add(key);
       all.push(p);
     }
     console.log(`  Página ${page}: ${batch.length} (${all.length} acumulados)`);
@@ -211,17 +193,74 @@ async function scrapeCategory(
   return all;
 }
 
+function parseCategoriesFromHomepage(html: string): RopelatoCategory[] {
+  const $ = cheerio.load(html);
+  const flat: {
+    slug: string;
+    name: string;
+    depth: number;
+    parentSlug: string;
+  }[] = [];
+  const parentStack: string[] = [];
+
+  $(
+    "li.sj-categmenu-custom-txtcateg, li.sj-categmenu-custom-txtsubcateg, li.sj-subchild-menu-item"
+  ).each((_, el) => {
+    const $li = $(el);
+    const $a = $li.children("a").first();
+    const slug = slugFromHref($a.attr("href") ?? "");
+    if (!slug) return;
+
+    const name = $a.text().trim().replace(/\s*\|\s*$/, "");
+    let depth = 0;
+    if ($li.hasClass("sj-categmenu-custom-txtsubcateg")) depth = 1;
+    else if ($li.hasClass("sj-subchild-menu-item")) depth = 2;
+
+    parentStack.length = depth;
+    const parentSlug = depth > 0 ? parentStack[depth - 1] ?? "" : "";
+    parentStack[depth] = slug;
+
+    flat.push({ slug, name, depth, parentSlug });
+  });
+
+  const childOf = new Set(flat.map((c) => c.parentSlug).filter(Boolean));
+  const seen = new Set<string>();
+  const out: RopelatoCategory[] = [];
+
+  for (const c of flat) {
+    if (seen.has(c.slug)) continue;
+    seen.add(c.slug);
+    out.push({
+      id: idFromSlug(c.slug),
+      slug: c.slug,
+      name: c.name,
+      parentSlug: c.parentSlug,
+      depth: c.depth,
+      hasChildren: childOf.has(c.slug),
+      url: `${ROPELATO_BASE}/${c.slug}`,
+      mappedTo: CATEGORY_MAP[c.slug],
+    });
+  }
+
+  return out;
+}
+
+async function fetchCategoriesFromHomepage(): Promise<RopelatoCategory[]> {
+  const html = await fetchHtml(`${ROPELATO_BASE}/`);
+  return parseCategoriesFromHomepage(html);
+}
+
 function loadScrapeTargets(outputDir: string): ScrapeTarget[] {
-  const mapping = loadMerlinoMapping();
-  const categoriesPath = path.join(outputDir, "merlino-categories.json");
+  const mapping = loadRopelatoMapping();
+  const categoriesPath = path.join(outputDir, "ropelato-categories.json");
   if (!fs.existsSync(categoriesPath)) {
     throw new Error(
-      `Falta ${categoriesPath}. Corré primero: npm run scrape:merlino:categories`
+      `Falta ${categoriesPath}. Corré primero: npm run scrape:ropelato:categories`
     );
   }
   const categories = JSON.parse(
     fs.readFileSync(categoriesPath, "utf-8")
-  ) as MerlinoCategory[];
+  ) as RopelatoCategory[];
 
   return categories
     .filter((c) => {
@@ -240,7 +279,7 @@ function toMaterialsFormat(products: ScrapedProduct[]) {
   const now = new Date().toISOString();
   return products.map((p) => ({
     name: p.name,
-    description: p.categoryMerlino,
+    description: p.categoryRopelato,
     price: p.price,
     unit: "u",
     brand: p.brand,
@@ -253,54 +292,13 @@ function toMaterialsFormat(products: ScrapedProduct[]) {
   }));
 }
 
-async function fetchCategoryTree(): Promise<VtexCategoryNode[]> {
-  const res = await fetch(MERLINO_CATEGORY_TREE_URL, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "application/json",
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${MERLINO_CATEGORY_TREE_URL}`);
-  }
-  return res.json() as Promise<VtexCategoryNode[]>;
-}
-
-function flattenCategoryTree(nodes: VtexCategoryNode[]): MerlinoCategory[] {
-  const out: MerlinoCategory[] = [];
-
-  function walk(list: VtexCategoryNode[], depth: number) {
-    for (const node of list) {
-      const slug = slugFromUrl(node.url);
-      if (!slug) continue;
-      const hasChildren = !!(node.children && node.children.length > 0);
-      out.push({
-        id: String(node.id),
-        slug,
-        name: node.name,
-        parentSlug: parentSlugFromSlug(slug),
-        depth,
-        hasChildren,
-        url: node.url ?? `${MERLINO_BASE}/${slug}`,
-        mappedTo: CATEGORY_MAP[slug],
-      });
-      if (node.children?.length) walk(node.children, depth + 1);
-    }
-  }
-
-  walk(nodes, 0);
-  return out;
-}
-
 async function runCategories(outputDir: string): Promise<void> {
-  console.log("Fetching Merlino category tree:", MERLINO_CATEGORY_TREE_URL);
-  const tree = await fetchCategoryTree();
-  const categories = flattenCategoryTree(tree);
+  console.log("Fetching Ropelato category menu from homepage");
+  const categories = await fetchCategoriesFromHomepage();
   const leaves = categories.filter((c) => !c.hasChildren);
 
-  const categoriesPath = path.join(outputDir, "merlino-categories.json");
-  const mappingCsvPath = path.join(outputDir, "merlino-category-mapping.csv");
+  const categoriesPath = path.join(outputDir, "ropelato-categories.json");
+  const mappingCsvPath = path.join(outputDir, "ropelato-category-mapping.csv");
 
   fs.writeFileSync(categoriesPath, JSON.stringify(categories, null, 2), "utf-8");
 
@@ -314,17 +312,19 @@ async function runCategories(outputDir: string): Promise<void> {
   ];
   fs.writeFileSync(mappingCsvPath, csvLines.join("\n"), "utf-8");
 
-  console.log(`\nDone. ${categories.length} categorías (${leaves.length} hojas sin hijos).`);
+  console.log(
+    `\nDone. ${categories.length} categorías (${leaves.length} hojas sin hijos).`
+  );
   console.log(`Categories: ${categoriesPath}`);
   console.log(`Mapping (editá myCategory): ${mappingCsvPath}`);
   console.log(
     "\nTip: para scrapear sin duplicar productos, mapeá y usá sobre todo categorías hoja (hasChildren=false)."
   );
   console.log(
-    "Mapeo automático: npm run map:merlino:categories (LLM, hojas en lotes)."
+    "Mapeo automático: npm run map:ropelato:categories (LLM, ~199 hojas en lotes)."
   );
   console.log(
-    "O copiá el CSV editado a scripts/merlino-category-mapping.json."
+    "O copiá el CSV editado a scripts/ropelato-category-mapping.json."
   );
 }
 
@@ -341,17 +341,18 @@ async function runScrape(
     console.log(`\n${target.name} (${target.slug}) -> ${target.categoryMapped}`);
     const batch = await scrapeCategory(target, maxPagesPerCategory);
     for (const p of batch) {
-      if (seenUrl.has(p.url)) continue;
-      seenUrl.add(p.url);
+      const key = p.url || p.productId;
+      if (seenUrl.has(key)) continue;
+      seenUrl.add(key);
       all.push(p);
     }
     await delay(DELAY_MS);
   }
 
-  const rawPath = path.join(outputDir, `merlino-products-${outputSuffix}.json`);
+  const rawPath = path.join(outputDir, `ropelato-products-${outputSuffix}.json`);
   const materialsPath = path.join(
     outputDir,
-    `merlino-materials-${outputSuffix}.json`
+    `ropelato-materials-${outputSuffix}.json`
   );
   fs.writeFileSync(rawPath, JSON.stringify(all, null, 2), "utf-8");
   fs.writeFileSync(
@@ -367,7 +368,7 @@ async function runScrape(
 async function main(): Promise<void> {
   const mode = process.argv[2] ?? "categories";
 
-  console.log("Merlino");
+  console.log("Ropelato");
   console.log("Mode:", mode);
 
   const outputDir = path.join(process.cwd(), "scripts", "output");
@@ -381,7 +382,7 @@ async function main(): Promise<void> {
   }
 
   if (mode === "mapping-check") {
-    const map = loadMerlinoMapping();
+    const map = loadRopelatoMapping();
     const filled = Object.entries(map).filter(([, v]) => v.trim());
     const targets = loadScrapeTargets(outputDir);
     console.log(`Mapping cargado: ${filled.length} filas con myCategory.`);
@@ -394,20 +395,20 @@ async function main(): Promise<void> {
   }
 
   if (mode === "test" || mode === "all") {
-    const mapping = loadMerlinoMapping();
+    const mapping = loadRopelatoMapping();
     const targets =
       mode === "test"
         ? (() => {
             const mapped = mapping[TEST_CATEGORY_SLUG]?.trim();
             if (!mapped) {
               throw new Error(
-                `Sin myCategory para ${TEST_CATEGORY_SLUG}. Completalo en merlino-category-mapping.csv`
+                `Sin myCategory para ${TEST_CATEGORY_SLUG}. Completalo en ropelato-category-mapping.csv`
               );
             }
             return [
               {
                 slug: TEST_CATEGORY_SLUG,
-                name: "Áridos",
+                name: "Hierros lisos",
                 url: categoryPageUrl(TEST_CATEGORY_SLUG, 1),
                 categoryMapped: mapped,
               },
@@ -417,13 +418,13 @@ async function main(): Promise<void> {
 
     if (targets.length === 0) {
       console.error(
-        "No hay categorías para scrapear. Completá myCategory en merlino-category-mapping.csv (categorías hoja, hasChildren=false)."
+        "No hay categorías para scrapear. Completá myCategory en ropelato-category-mapping.csv (categorías hoja, hasChildren=false)."
       );
       process.exit(1);
     }
 
     console.log(
-      `Using mapping: merlino-category-mapping.json o scripts/output/merlino-category-mapping.csv`
+      `Using mapping: ropelato-category-mapping.json o scripts/output/ropelato-category-mapping.csv`
     );
     console.log(`Categorías a scrapear: ${targets.length}`);
 
@@ -434,7 +435,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    "Uso: npx tsx scripts/scrape-merlino.ts [categories|mapping-check|test|all]"
+    "Uso: npx tsx scripts/scrape-ropelato.ts [categories|mapping-check|test|all]"
   );
   process.exit(1);
 }

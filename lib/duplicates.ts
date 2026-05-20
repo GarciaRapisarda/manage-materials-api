@@ -13,13 +13,64 @@ function normalizeOptional(s: string | null | undefined): string {
   return normalizeForMaterialMatch(s ?? "");
 }
 
+export function countDuplicateGroups(
+  groups: Map<string, DuplicateGroupInfo>
+): number {
+  const seen = new Set<string>();
+  for (const info of groups.values()) {
+    seen.add([...info.ids].sort().join(","));
+  }
+  return seen.size;
+}
+
+function duplicateKey<
+  T extends {
+    name: string;
+    description?: string | null;
+    brand?: string | null;
+  }
+>(item: T): string {
+  return `${normalizeForMaterialMatch(item.name)}|${normalizeOptional(item.brand)}|${normalizeOptional(item.description)}`;
+}
+
+export function mergeDuplicateGroupsForSelection<
+  T extends {
+    id: string;
+    name: string;
+    description?: string | null;
+    brand?: string | null;
+  }
+>(
+  base: Map<string, DuplicateGroupInfo>,
+  items: T[],
+  selectedIds: Set<string>
+): Map<string, DuplicateGroupInfo> {
+  if (selectedIds.size === 0) return base;
+
+  const result = new Map(base);
+  const byId = new Map(items.map((m) => [m.id, m]));
+
+  for (const id of selectedIds) {
+    const item = byId.get(id);
+    if (!item) continue;
+    const key = duplicateKey(item);
+    const siblings = items.filter((m) => duplicateKey(m) === key);
+    if (siblings.length < 2) continue;
+    const ids = siblings.map((m) => m.id);
+    const info: DuplicateGroupInfo = { count: ids.length, ids };
+    ids.forEach((sid) => result.set(sid, info));
+  }
+
+  return result;
+}
+
 export function getDuplicateGroupsByNormalizedName<
   T extends { id: string; name: string; description?: string | null; brand?: string | null }
 >(items: T[]): Map<string, DuplicateGroupInfo> {
   const byNormalized = new Map<string, string[]>();
 
   for (const item of items) {
-    const key = `${normalizeForMaterialMatch(item.name)}|${normalizeOptional(item.brand)}|${normalizeOptional(item.description)}`;
+    const key = duplicateKey(item);
     const ids = byNormalized.get(key) ?? [];
     ids.push(item.id);
     byNormalized.set(key, ids);

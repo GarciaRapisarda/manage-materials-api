@@ -66,6 +66,37 @@
   margin-bottom: 16px;
 }
 
+.categoryField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.categoryLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.categorySelect {
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  max-width: 320px;
+}
+
+.categorySelect:focus {
+  outline: none;
+  border-color: #1565c0;
+}
+
+.categorySelect:disabled {
+  opacity: 0.6;
+}
+
 .search {
   width: 100%;
   max-width: 360px;

@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/config/api";
+import { API_BASE_URL, categoryMaterialsPath } from "@/config/api";
 import type { Material, MaterialsApiResponse } from "@/types/material";
 
 function asMaterialRecord(raw: unknown): Record<string, unknown> | null {
@@ -93,15 +93,33 @@ export function normalizeMaterialFromApi(raw: unknown): Material {
   };
 }
 
-export async function fetchAllMaterials(
-  token: string
-): Promise<MaterialsApiResponse> {
-  const res = await fetch(`${API_BASE_URL}/materials/all`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+function extractMaterialsFromApiPayload(
+  payload: unknown,
+  fallbackCategoryId?: string
+): Material[] {
+  if (Array.isArray(payload)) {
+    return payload.map((row) => normalizeMaterialFromApi(row));
+  }
 
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const nested = record.materials;
+    if (Array.isArray(nested)) {
+      const categoryId = String(record.id ?? fallbackCategoryId ?? "");
+      return nested.map((row) => {
+        const material = normalizeMaterialFromApi(row);
+        return {
+          ...material,
+          categoryId: material.categoryId || categoryId || null,
+        };
+      });
+    }
+  }
+
+  return [];
+}
+
+async function parseMaterialsResponse(res: Response): Promise<MaterialsApiResponse> {
   if (!res.ok) {
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
@@ -110,14 +128,47 @@ export async function fetchAllMaterials(
     message?: unknown;
     data?: unknown;
   };
-  const rows = json.data;
-  const data = Array.isArray(rows)
-    ? rows.map((row) => normalizeMaterialFromApi(row))
-    : [];
   return {
     message: String(json.message ?? ""),
-    data,
+    data: extractMaterialsFromApiPayload(json.data),
   };
+}
+
+export async function fetchMaterialsByCategory(
+  categoryId: string,
+  token: string
+): Promise<MaterialsApiResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/${categoryMaterialsPath(categoryId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Error ${res.status}: ${res.statusText}`);
+  }
+
+  const json = (await res.json()) as {
+    message?: unknown;
+    data?: unknown;
+  };
+  return {
+    message: String(json.message ?? ""),
+    data: extractMaterialsFromApiPayload(json.data, categoryId),
+  };
+}
+
+export async function fetchAllMaterials(
+  token: string
+): Promise<MaterialsApiResponse> {
+  const res = await fetch(`${API_BASE_URL}/materials/all`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return parseMaterialsResponse(res);
 }
 
 export async function deleteMaterial(
