@@ -58,6 +58,25 @@ export function matchChunkToMaterials(
       matchedMaterial: best,
       index: i,
     });
+
+    if (action === "create") {
+      const pending: Material = {
+        id: `__pending_${i}`,
+        name: p.name,
+        description: p.sectionContext ?? "",
+        price: p.price ?? 0,
+        unit: p.unit || "u",
+        brand: null,
+        unquoted: false,
+        temporary: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        delete_at: null,
+      };
+      const pendingMatches = byNormalized.get(key) ?? [];
+      pendingMatches.push(pending);
+      byNormalized.set(key, pendingMatches);
+    }
   }
   return result;
 }

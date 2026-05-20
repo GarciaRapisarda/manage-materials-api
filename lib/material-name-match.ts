@@ -28,7 +28,10 @@ export function normalizeForMaterialMatch(raw: string): string {
     s = s.split(accent).join(plain);
   }
   s = s.replace(/[°º˚]/g, "°");
-  s = s.replace(/(\d)\s*\?\s*x\b/g, "$1°x");
+  s = s.replace(
+    /(\d)\s*(?:[°º˚?]|['''′″"\u2032\u2033])+\s*x\b/gi,
+    "$1°x"
+  );
   s = s.replace(/\u00d7/g, "x");
   return s;
 }
