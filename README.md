@@ -17,6 +17,8 @@ Ejecutar **siempre desde la raíz** del proyecto. Usan `fetch` + Cheerio; pueden
 | **Todo Proyectable** | `npm run scrape:todoproyectable` | Igual: por defecto `all`, `test` o `categories`. |
 | **Edify** | `npm run scrape:edify` | El script por defecto es `categories` si no pasás nada; el script de npm ya pasa `all`. También: `test`, `categories`. |
 | **Materiales Moreno** | `npm run scrape:moreno` | `all` = catálogo por categorías. `test` = una categoría de prueba. `categories` = lista + CSV de mapeo. |
+| **Sodimac** | `npm run scrape:sodimac:test` | Playwright (no `fetch` directo). `test` = Muebles, 2 páginas. `categories` = descubre subcategorías. Requiere `npx playwright install chromium`. Si Cloudflare bloquea página 2+: `SODIMAC_HEADED=1 npm run scrape:sodimac:test`. |
+| **Merlino** | `npm run scrape:merlino` | `categories` = árbol + CSV. Editá `myCategory` en el CSV. `mapping-check` = ver cuántas quedaron listas. `test` = una categoría (Áridos), 2 páginas. Sin argumento / `all` = todas las hojas mapeadas. |
 
 Atajos definidos en `package.json`:
 
@@ -36,6 +38,14 @@ npm run scrape:edify:categories
 npm run scrape:moreno
 npm run scrape:moreno:test
 npm run scrape:moreno:categories
+
+npm run scrape:sodimac:test
+npm run scrape:sodimac:categories
+
+npm run scrape:merlino:categories
+npm run scrape:merlino:mapping-check
+npm run scrape:merlino:test
+npm run scrape:merlino
 ```
 
 Equivalente manual (misma cosa que los scripts de npm):
@@ -56,6 +66,8 @@ Todo cae en **`scripts/output/`**, por ejemplo:
 - Todo Proyectable: `todoproyectable-products-raw.json`, `todoproyectable-materials.json`.
 - Edify: `edify-products-raw.json`, `edify-materials.json`.
 - Materiales Moreno: `moreno-products-raw.json`, `moreno-materials.json` (+ `moreno-categories.json` / `moreno-category-mapping.csv` en `categories`).
+- Sodimac (prueba): `sodimac-products-test.json`, `sodimac-materials-test.json` (+ `sodimac-categories.json` / `sodimac-category-mapping.csv` en `categories`).
+- Merlino: `merlino-categories.json`, `merlino-category-mapping.csv` (editar `myCategory`); scrape: `merlino-products-test.json` / `merlino-materials-all.json`.
 
 Los JSON “materials” están pensados para importar o contrastar con tu flujo (p. ej. chunk en la app). Los mapeos de categoría viven en `scripts/` (`*-category-mapping.json` / `.csv`) según cada scraper; Moreno puede usar `scripts/moreno-category-map.ts` o `scripts/output/moreno-category-mapping.csv` editado.
 
