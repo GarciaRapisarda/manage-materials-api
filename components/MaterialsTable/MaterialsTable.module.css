@@ -1,13 +1,69 @@
 .wrapper {
+  position: relative;
   overflow-x: auto;
+  overflow-y: hidden;
   background: #fff;
   border-radius: 8px;
   border: 1px solid #e0e0e0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wrapperProcessing {
+  pointer-events: none;
+}
+
+.wrapperProcessing .table {
+  opacity: 0.5;
+}
+
+.processingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+}
+
+.processingSpinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #1565c0;
+  border-radius: 50%;
+  animation: tableSpinner 0.8s linear infinite;
+}
+
+.processingText {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1565c0;
+}
+
+@keyframes tableSpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wrapperScrollable {
+  cursor: grab;
+}
+
+.wrapperDragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }

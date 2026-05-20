@@ -37,7 +37,6 @@ interface QuickFilters {
   noBrand: boolean;
   noDescription: boolean;
   noPrice: boolean;
-  onlyTemporary: boolean;
   onlyUnquoted: boolean;
 }
 
@@ -52,7 +51,6 @@ export function MaterialsView() {
     noBrand: false,
     noDescription: false,
     noPrice: false,
-    onlyTemporary: false,
     onlyUnquoted: false,
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -69,8 +67,9 @@ export function MaterialsView() {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [addingMaterial, setAddingMaterial] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [, startFilterTransition] = useTransition();
+  const [isFilterPending, startFilterTransition] = useTransition();
   const deferredSearch = useDeferredValue(search);
+  const deferredQuickFilters = useDeferredValue(quickFilters);
   const filteredMaterialsRef = useRef<Material[]>([]);
 
   useEffect(() => {
@@ -121,26 +120,23 @@ export function MaterialsView() {
       const lower = q.toLowerCase();
       result = result.filter((m) => m.name.toLowerCase().includes(lower));
     }
-    if (quickFilters.onlyDuplicates) {
+    if (deferredQuickFilters.onlyDuplicates) {
       result = result.filter((m) => duplicateGroups.has(m.id));
     }
-    if (quickFilters.noBrand) {
+    if (deferredQuickFilters.noBrand) {
       result = result.filter((m) => !m.brand || m.brand.trim() === "");
     }
-    if (quickFilters.noDescription) {
+    if (deferredQuickFilters.noDescription) {
       result = result.filter((m) => !m.description || m.description.trim() === "");
     }
-    if (quickFilters.noPrice) {
+    if (deferredQuickFilters.noPrice) {
       result = result.filter((m) => m.price == null || m.price === 0);
     }
-    if (quickFilters.onlyTemporary) {
-      result = result.filter((m) => m.temporary);
-    }
-    if (quickFilters.onlyUnquoted) {
+    if (deferredQuickFilters.onlyUnquoted) {
       result = result.filter((m) => m.unquoted);
     }
     return result;
-  }, [materials, deferredSearch, quickFilters, duplicateGroups]);
+  }, [materials, deferredSearch, deferredQuickFilters, duplicateGroups]);
 
   filteredMaterialsRef.current = filteredMaterials;
 
@@ -331,6 +327,14 @@ export function MaterialsView() {
 
   const duplicateCount = duplicateGroups.size;
   const selectedCount = selectedIds.size;
+  const isProcessingFilters =
+    isFilterPending ||
+    search !== deferredSearch ||
+    quickFilters !== deferredQuickFilters;
+  const hasActiveFilters =
+    search.trim() !== "" || Object.values(quickFilters).some(Boolean);
+  const visibleCount = filteredMaterials.length;
+  const totalCount = materials.length;
 
   return (
     <main className={styles.main}>
@@ -338,11 +342,9 @@ export function MaterialsView() {
         <div>
           <h1 className={styles.title}>Administración de Materiales</h1>
           <p className={styles.subtitle}>
-            {filteredMaterials.length} de {materials.length} material
-            {materials.length !== 1 ? "es" : ""}
-            {(search ||
-              Object.values(quickFilters).some(Boolean)) &&
-              " (filtrados)"}
+            {hasActiveFilters
+              ? `${visibleCount.toLocaleString("es-AR")} de ${totalCount.toLocaleString("es-AR")} materiales visibles`
+              : `${totalCount.toLocaleString("es-AR")} material${totalCount !== 1 ? "es" : ""}`}
             {duplicateCount > 0 && ` · ${duplicateCount} duplicado${duplicateCount > 1 ? "s" : ""}`}
             {selectedCount > 0 && ` · ${selectedCount} seleccionado${selectedCount > 1 ? "s" : ""}`}
           </p>
@@ -367,7 +369,9 @@ export function MaterialsView() {
           type="search"
           placeholder="Buscar por nombre..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) =>
+            startFilterTransition(() => setSearch(e.target.value))
+          }
           className={styles.search}
           aria-label="Buscar por nombre"
         />
@@ -415,17 +419,6 @@ export function MaterialsView() {
           <label className={styles.filterChip}>
             <input
               type="checkbox"
-              checked={quickFilters.onlyTemporary}
-              onChange={(e) =>
-                setQuickFilter("onlyTemporary", e.target.checked)
-              }
-              aria-label="Solo temporarios"
-            />
-            Temporarios
-          </label>
-          <label className={styles.filterChip}>
-            <input
-              type="checkbox"
               checked={quickFilters.onlyUnquoted}
               onChange={(e) =>
                 setQuickFilter("onlyUnquoted", e.target.checked)
@@ -435,6 +428,13 @@ export function MaterialsView() {
             Sin cotizar
           </label>
         </div>
+        {hasActiveFilters && (
+          <p className={styles.resultsCount} role="status" aria-live="polite">
+            Mostrando{" "}
+            <strong>{visibleCount.toLocaleString("es-AR")}</strong> de{" "}
+            {totalCount.toLocaleString("es-AR")} materiales
+          </p>
+        )}
         <button
           onClick={selectDuplicatesForCleanup}
           disabled={duplicateGroups.size === 0}
@@ -526,6 +526,7 @@ export function MaterialsView() {
         onToggleSelection={toggleSelection}
         onSelectAll={selectAll}
         onEdit={handleEditMaterial}
+        isProcessing={isProcessingFilters}
       />
       <EditMaterialModal
         material={editingMaterial}

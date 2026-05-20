@@ -88,6 +88,21 @@
   gap: 8px;
 }
 
+.resultsCount {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 14px;
+  color: #1565c0;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.resultsCount strong {
+  font-weight: 600;
+}
+
 .filterChip {
   display: flex;
   align-items: center;

@@ -1,7 +1,8 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import type { Material } from "@/types/material";
 import type { DuplicateGroupInfo } from "@/lib/duplicates";
 import { formatPrice, formatDate, displayValue } from "@/lib/formatters";
+import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 import styles from "./MaterialsTable.module.css";
 
 interface MaterialsTableProps {
@@ -12,6 +13,7 @@ interface MaterialsTableProps {
   onToggleSelection: (id: string) => void;
   onSelectAll: (checked: boolean) => void;
   onEdit: (material: Material) => void;
+  isProcessing?: boolean;
 }
 
 function DuplicateGroupCell({
@@ -64,17 +66,46 @@ function MaterialsTableInner({
   onToggleSelection,
   onSelectAll,
   onEdit,
+  isProcessing = false,
 }: MaterialsTableProps) {
+  const { ref, onMouseDown, isDragging, canScroll, updateCanScroll } =
+    useHorizontalDragScroll();
   const visibleSelected = materials.filter((m) => selectedIds.has(m.id)).length;
   const allVisibleSelected = materials.length > 0 && visibleSelected === materials.length;
   const someVisibleSelected = visibleSelected > 0;
+
+  useEffect(() => {
+    updateCanScroll();
+  }, [materials, updateCanScroll]);
 
   function handleSelectAllChange(e: React.ChangeEvent<HTMLInputElement>) {
     onSelectAll(e.target.checked);
   }
 
+  const wrapperClass = [
+    styles.wrapper,
+    canScroll ? styles.wrapperScrollable : "",
+    isDragging ? styles.wrapperDragging : "",
+    isProcessing ? styles.wrapperProcessing : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className={styles.wrapper}>
+    <div
+      ref={ref}
+      className={wrapperClass}
+      onMouseDown={onMouseDown}
+      role="region"
+      aria-label="Tabla de materiales"
+      aria-busy={isProcessing}
+    >
+      {isProcessing && (
+        <div className={styles.processingOverlay}>
+          <div className={styles.processingSpinner} aria-hidden="true" />
+          <span className={styles.processingText}>Procesando filtros...</span>
+        </div>
+      )}
       <table className={styles.table}>
         <thead>
           <tr>
@@ -96,7 +127,6 @@ function MaterialsTableInner({
             <th className={styles.th}>Unidad</th>
             <th className={styles.th}>Marca</th>
             <th className={styles.th}>Sin cotizar</th>
-            <th className={styles.th}>Temporal</th>
             <th className={styles.th}>Actualizado</th>
             <th className={styles.thGroup}>Grupo duplicado</th>
             <th className={styles.thActions}>Editar</th>
@@ -129,7 +159,6 @@ function MaterialsTableInner({
                 <td className={styles.td}>{displayValue(m.unit)}</td>
                 <td className={styles.td}>{displayValue(m.brand)}</td>
                 <td className={styles.td}>{m.unquoted ? "Sí" : "No"}</td>
-                <td className={styles.td}>{m.temporary ? "Sí" : "No"}</td>
                 <td className={styles.td}>{formatDate(m.updated_at)}</td>
                 <td className={styles.tdGroup}>
                   {group ? (
