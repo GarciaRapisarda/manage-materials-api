@@ -466,7 +466,6 @@ export function MaterialsView() {
       />
       <div className={styles.toolbar}>
         <label className={styles.categoryField}>
-          <span className={styles.categoryLabel}>Categoría</span>
           <select
             className={styles.categorySelect}
             value={selectedCategoryId}

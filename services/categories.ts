@@ -13,16 +13,27 @@ export function normalizeCategoryFromApi(raw: unknown): Category {
   if (!r) {
     throw new Error("Categoría inválida: se esperaba un objeto");
   }
+  const createdAt =
+    r.created_at != null && r.created_at !== ""
+      ? String(r.created_at)
+      : r.createdAt != null && r.createdAt !== ""
+        ? String(r.createdAt)
+        : "";
+  const updatedAt =
+    r.updated_at != null && r.updated_at !== ""
+      ? String(r.updated_at)
+      : r.updatedAt != null && r.updatedAt !== ""
+        ? String(r.updatedAt)
+        : "";
+  const deleteRaw = r.delete_at ?? r.deleteAt;
   return {
     id: String(r.id ?? ""),
     name: String(r.name ?? ""),
     description: String(r.description ?? ""),
-    created_at: String(r.created_at ?? ""),
-    updated_at: String(r.updated_at ?? ""),
+    created_at: createdAt,
+    updated_at: updatedAt,
     delete_at:
-      r.delete_at == null || r.delete_at === ""
-        ? null
-        : String(r.delete_at),
+      deleteRaw == null || deleteRaw === "" ? null : String(deleteRaw),
   };
 }
 

@@ -146,7 +146,7 @@ Variables de entorno: ver `.env.local` / `config/api.ts` para la URL de la API y
 | Uso | Método | Ruta |
 |-----|--------|------|
 | Categorías | `GET` | `{baseUrl}/category/all` |
-| Materiales por categoría | `GET` | `{baseUrl}/category/materials/:categoryId` |
+| Materiales por categoría | `GET` | `{baseUrl}/category/materials/:categoryId` → `data.category` + `data.items[]` |
 | Todos (solo import / comparar nombres) | `GET` | `{baseUrl}/materials/all` |
 
 La tabla principal carga **una categoría a la vez**. Al importar JSON, la app pide `/materials/all` una sola vez para matchear nombres contra toda la base.

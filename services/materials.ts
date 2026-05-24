@@ -72,6 +72,9 @@ export function normalizeMaterialFromApi(raw: unknown): Material {
   }
   const categoryId = extractCategoryIdFromMaterialRecord(r);
   const brandRaw = r.brand;
+  const createdAt = firstNonEmptyString(r.created_at, r.createdAt);
+  const updatedAt = firstNonEmptyString(r.updated_at, r.updatedAt);
+  const deleteAt = firstNonEmptyString(r.delete_at, r.deleteAt);
   return {
     id: String(r.id ?? ""),
     categoryId,
@@ -84,13 +87,38 @@ export function normalizeMaterialFromApi(raw: unknown): Material {
       brandRaw == null || brandRaw === "" ? null : String(brandRaw),
     unquoted: Boolean(r.unquoted),
     temporary: Boolean(r.temporary),
-    created_at: String(r.created_at ?? ""),
-    updated_at: String(r.updated_at ?? ""),
-    delete_at:
-      r.delete_at == null || r.delete_at === ""
-        ? null
-        : String(r.delete_at),
+    created_at: createdAt ?? "",
+    updated_at: updatedAt ?? "",
+    delete_at: deleteAt,
   };
+}
+
+function resolveCategoryIdFromPayload(
+  record: Record<string, unknown>,
+  fallbackCategoryId?: string
+): string {
+  const nested = record.category;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const cat = nested as Record<string, unknown>;
+    const fromCategory = firstNonEmptyString(cat.id, cat.categoryId);
+    if (fromCategory) return fromCategory;
+  }
+  const fromRoot = firstNonEmptyString(record.id);
+  if (fromRoot) return fromRoot;
+  return fallbackCategoryId ?? "";
+}
+
+function mapMaterialRows(
+  rows: unknown[],
+  categoryId: string
+): Material[] {
+  return rows.map((row) => {
+    const material = normalizeMaterialFromApi(row);
+    return {
+      ...material,
+      categoryId: material.categoryId || categoryId || null,
+    };
+  });
 }
 
 function extractMaterialsFromApiPayload(
@@ -98,21 +126,21 @@ function extractMaterialsFromApiPayload(
   fallbackCategoryId?: string
 ): Material[] {
   if (Array.isArray(payload)) {
-    return payload.map((row) => normalizeMaterialFromApi(row));
+    return mapMaterialRows(payload, fallbackCategoryId ?? "");
   }
 
   if (payload && typeof payload === "object") {
     const record = payload as Record<string, unknown>;
-    const nested = record.materials;
-    if (Array.isArray(nested)) {
-      const categoryId = String(record.id ?? fallbackCategoryId ?? "");
-      return nested.map((row) => {
-        const material = normalizeMaterialFromApi(row);
-        return {
-          ...material,
-          categoryId: material.categoryId || categoryId || null,
-        };
-      });
+    const categoryId = resolveCategoryIdFromPayload(record, fallbackCategoryId);
+
+    const items = record.items;
+    if (Array.isArray(items)) {
+      return mapMaterialRows(items, categoryId);
+    }
+
+    const materials = record.materials;
+    if (Array.isArray(materials)) {
+      return mapMaterialRows(materials, categoryId);
     }
   }
 
