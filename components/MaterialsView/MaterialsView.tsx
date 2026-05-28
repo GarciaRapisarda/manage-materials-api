@@ -17,6 +17,7 @@ import {
   patchMaterial,
   createMaterial,
 } from "@/services/materials";
+import { CATEGORY_MATERIALS_DEFAULT_PAGE_SIZE } from "@/config/api";
 import { fetchCategories } from "@/services/categories";
 import {
   getDuplicateGroupsByNormalizedName,
@@ -76,30 +77,58 @@ export function MaterialsView() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [materialsLoading, setMaterialsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageMeta, setPageMeta] = useState<{
+    total?: number;
+    totalPages?: number;
+    hasMore: boolean;
+  }>({ hasMore: false });
   const [isFilterPending, startFilterTransition] = useTransition();
   const deferredSearch = useDeferredValue(search);
   const deferredQuickFilters = useDeferredValue(quickFilters);
   const filteredMaterialsRef = useRef<Material[]>([]);
+  const prevCategoryRef = useRef(selectedCategoryId);
+  const prevSearchRef = useRef(deferredSearch);
+
+  const loadCategoryPage = useCallback(
+    async (categoryId: string, pageNum: number, searchQ: string) => {
+      const token = getStoredToken();
+      if (!token) return;
+      setMaterialsLoading(true);
+      try {
+        const res = await fetchMaterialsByCategory(categoryId, token, {
+          page: pageNum,
+          pageSize: CATEGORY_MATERIALS_DEFAULT_PAGE_SIZE,
+          q: searchQ.trim() || undefined,
+        });
+        setMaterials(res.data);
+        setPage(res.page);
+        setPageMeta({
+          total: res.total,
+          totalPages: res.totalPages,
+          hasMore: res.hasMore,
+        });
+        setError(null);
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("401")) {
+          clearStoredToken();
+          router.replace("/login");
+          return;
+        }
+        setError(
+          err instanceof Error ? err.message : "Error al cargar materiales"
+        );
+      } finally {
+        setMaterialsLoading(false);
+      }
+    },
+    [router]
+  );
 
   const reloadCurrentCategory = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token || !selectedCategoryId) return;
-    setMaterialsLoading(true);
-    try {
-      const res = await fetchMaterialsByCategory(selectedCategoryId, token);
-      setMaterials(res.data);
-      setError(null);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("401")) {
-        clearStoredToken();
-        router.replace("/login");
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Error al cargar materiales");
-    } finally {
-      setMaterialsLoading(false);
-    }
-  }, [router, selectedCategoryId]);
+    if (!selectedCategoryId) return;
+    await loadCategoryPage(selectedCategoryId, page, deferredSearch);
+  }, [loadCategoryPage, selectedCategoryId, page, deferredSearch]);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -132,40 +161,35 @@ export function MaterialsView() {
 
   useEffect(() => {
     if (!selectedCategoryId) return;
-    const token = getStoredToken();
-    if (!token) return;
 
     let cancelled = false;
-    setMaterialsLoading(true);
+    let pageToLoad = page;
+    if (
+      prevCategoryRef.current !== selectedCategoryId ||
+      prevSearchRef.current !== deferredSearch
+    ) {
+      pageToLoad = 1;
+      setPage(1);
+      prevCategoryRef.current = selectedCategoryId;
+      prevSearchRef.current = deferredSearch;
+    }
+
     setMaterials(null);
     setSelectedIds(new Set());
     setDeleteResult(null);
 
-    fetchMaterialsByCategory(selectedCategoryId, token)
-      .then((res) => {
-        if (cancelled) return;
-        setMaterials(res.data);
-        setError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        if (err instanceof Error && err.message.includes("401")) {
-          clearStoredToken();
-          router.replace("/login");
-          return;
-        }
-        setError(err instanceof Error ? err.message : "Error al cargar materiales");
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setMaterialsLoading(false);
-        setLoading(false);
-      });
+    void loadCategoryPage(
+      selectedCategoryId,
+      pageToLoad,
+      deferredSearch
+    ).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedCategoryId, router]);
+  }, [selectedCategoryId, page, deferredSearch, loadCategoryPage]);
 
   const handleCategoryChange = useCallback((categoryId: string) => {
     startFilterTransition(() => {
@@ -180,6 +204,12 @@ export function MaterialsView() {
       setSelectedCategoryId(categoryId);
     });
   }, []);
+
+  const goToPage = useCallback((nextPage: number) => {
+    if (nextPage < 1) return;
+    if (pageMeta.totalPages != null && nextPage > pageMeta.totalPages) return;
+    setPage(nextPage);
+  }, [pageMeta.totalPages]);
 
   const duplicateGroups = useMemo(
     () =>
@@ -213,11 +243,6 @@ export function MaterialsView() {
   const filteredMaterials = useMemo(() => {
     if (!materials) return [];
     let result = materials;
-    const q = deferredSearch.trim();
-    if (q) {
-      const lower = q.toLowerCase();
-      result = result.filter((m) => m.name.toLowerCase().includes(lower));
-    }
     if (deferredQuickFilters.onlyDuplicates) {
       result = result.filter((m) => displayDuplicateGroups.has(m.id));
     }
@@ -234,7 +259,7 @@ export function MaterialsView() {
       result = result.filter((m) => m.unquoted);
     }
     return result;
-  }, [materials, deferredSearch, deferredQuickFilters, displayDuplicateGroups]);
+  }, [materials, deferredQuickFilters, displayDuplicateGroups]);
 
   filteredMaterialsRef.current = filteredMaterials;
 
@@ -429,10 +454,14 @@ export function MaterialsView() {
     isFilterPending ||
     search !== deferredSearch ||
     quickFilters !== deferredQuickFilters;
-  const hasActiveFilters =
-    search.trim() !== "" || Object.values(quickFilters).some(Boolean);
+  const hasActiveFilters = Object.values(quickFilters).some(Boolean);
   const visibleCount = filteredMaterials.length;
-  const totalCount = materials?.length ?? 0;
+  const pageItemCount = materials?.length ?? 0;
+  const canGoPrev = page > 1 && !materialsLoading;
+  const canGoNext =
+    !materialsLoading &&
+    (pageMeta.hasMore ||
+      (pageMeta.totalPages != null && page < pageMeta.totalPages));
 
   return (
     <main className={styles.main}>
@@ -441,13 +470,18 @@ export function MaterialsView() {
           <h1 className={styles.title}>Administración de Materiales</h1>
           <p className={styles.subtitle}>
             {selectedCategory ? `${selectedCategory.name} · ` : ""}
+            Página {page}
+            {pageMeta.totalPages != null ? ` de ${pageMeta.totalPages}` : ""}
+            {pageMeta.total != null
+              ? ` · ${pageMeta.total.toLocaleString("es-AR")} en rubro`
+              : ` · ${pageItemCount.toLocaleString("es-AR")} en esta página`}
             {hasActiveFilters
-              ? `${visibleCount.toLocaleString("es-AR")} de ${totalCount.toLocaleString("es-AR")} visibles`
-              : `${totalCount.toLocaleString("es-AR")} en categoría`}
+              ? ` · ${visibleCount.toLocaleString("es-AR")} visibles (filtros)`
+              : ""}
             {duplicateMaterialCount > 0 &&
-              ` · ${duplicateGroupCount} grupo${duplicateGroupCount !== 1 ? "s" : ""} (${duplicateMaterialCount} materiales)`}
+              ` · ${duplicateGroupCount} grupo${duplicateGroupCount !== 1 ? "s" : ""} en página`}
             {selectedCount > 0 && ` · ${selectedCount} seleccionado${selectedCount > 1 ? "s" : ""}`}
-            {materialsLoading && " · cargando..."}
+            {materialsLoading ? " · cargando..." : ""}
           </p>
         </div>
         <button
@@ -482,7 +516,7 @@ export function MaterialsView() {
         </label>
         <input
           type="search"
-          placeholder="Buscar por nombre..."
+          placeholder="Buscar por nombre o marca..."
           value={search}
           onChange={(e) =>
             startFilterTransition(() => setSearch(e.target.value))
@@ -547,7 +581,7 @@ export function MaterialsView() {
           <p className={styles.resultsCount} role="status" aria-live="polite">
             Mostrando{" "}
             <strong>{visibleCount.toLocaleString("es-AR")}</strong> de{" "}
-            {totalCount.toLocaleString("es-AR")} materiales
+            {pageItemCount.toLocaleString("es-AR")} en esta página
           </p>
         )}
         <button
@@ -567,7 +601,7 @@ export function MaterialsView() {
         </button>
         <div className={styles.exportGroup}>
           <div className={styles.exportDropdown}>
-            <span className={styles.exportLabel}>Exportar categoría:</span>
+            <span className={styles.exportLabel}>Exportar página:</span>
             <button
               onClick={() => exportCategory("csv")}
               className={styles.exportBtn}
@@ -643,6 +677,28 @@ export function MaterialsView() {
         onEdit={handleEditMaterial}
         isProcessing={isProcessingFilters || materialsLoading}
       />
+      <div className={styles.pagination}>
+        <button
+          type="button"
+          className={styles.pageBtn}
+          onClick={() => goToPage(page - 1)}
+          disabled={!canGoPrev}
+        >
+          Anterior
+        </button>
+        <span className={styles.pageInfo}>
+          Página {page}
+          {pageMeta.totalPages != null ? ` de ${pageMeta.totalPages}` : ""}
+        </span>
+        <button
+          type="button"
+          className={styles.pageBtn}
+          onClick={() => goToPage(page + 1)}
+          disabled={!canGoNext}
+        >
+          Siguiente
+        </button>
+      </div>
       <EditMaterialModal
         material={editingMaterial}
         categories={categories}

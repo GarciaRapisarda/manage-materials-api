@@ -92,6 +92,42 @@
   opacity: 0.6;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 12px 0;
+}
+
+.pageInfo {
+  font-size: 14px;
+  color: #444;
+  min-width: 120px;
+  text-align: center;
+}
+
+.pageBtn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1565c0;
+  background: #fff;
+  border: 1px solid #90caf9;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pageBtn:hover:not(:disabled) {
+  background: #e3f2fd;
+}
+
+.pageBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .search {
   width: 100%;
   max-width: 360px;

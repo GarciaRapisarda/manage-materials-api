@@ -17,3 +17,19 @@ export interface MaterialsApiResponse {
   message: string;
   data: Material[];
 }
+
+export interface CategoryMaterialsQuery {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+}
+
+export interface CategoryMaterialsPageResult {
+  message: string;
+  data: Material[];
+  page: number;
+  pageSize: number;
+  total?: number;
+  totalPages?: number;
+  hasMore: boolean;
+}

@@ -1,5 +1,15 @@
-import { API_BASE_URL, categoryMaterialsPath } from "@/config/api";
-import type { Material, MaterialsApiResponse } from "@/types/material";
+import {
+  API_BASE_URL,
+  CATEGORY_MATERIALS_DEFAULT_PAGE_SIZE,
+  CATEGORY_MATERIALS_MAX_PAGE_SIZE,
+  categoryMaterialsPath,
+} from "@/config/api";
+import type {
+  CategoryMaterialsPageResult,
+  CategoryMaterialsQuery,
+  Material,
+  MaterialsApiResponse,
+} from "@/types/material";
 
 function asMaterialRecord(raw: unknown): Record<string, unknown> | null {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -121,6 +131,75 @@ function mapMaterialRows(
   });
 }
 
+function readPositiveInt(...candidates: unknown[]): number | undefined {
+  for (const v of candidates) {
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isNaN(n) && n > 0) return Math.floor(n);
+  }
+  return undefined;
+}
+
+function parseCategoryMaterialsPayload(
+  payload: unknown,
+  fallbackCategoryId: string,
+  requestedPage: number,
+  requestedPageSize: number
+): Omit<CategoryMaterialsPageResult, "message"> {
+  const record =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
+  const categoryId = resolveCategoryIdFromPayload(record, fallbackCategoryId);
+  const data = extractMaterialsFromApiPayload(payload, fallbackCategoryId);
+
+  const page =
+    readPositiveInt(record.page, record.currentPage) ?? requestedPage;
+  const pageSize =
+    readPositiveInt(record.pageSize, record.page_size, record.limit) ??
+    requestedPageSize;
+  const total = readPositiveInt(
+    record.total,
+    record.totalCount,
+    record.totalItems,
+    record.count
+  );
+  let totalPages = readPositiveInt(record.totalPages, record.total_pages);
+  if (!totalPages && total != null && pageSize > 0) {
+    totalPages = Math.ceil(total / pageSize);
+  }
+
+  const hasMore =
+    totalPages != null ? page < totalPages : data.length >= pageSize;
+
+  return {
+    data,
+    page,
+    pageSize,
+    total,
+    totalPages,
+    hasMore,
+  };
+}
+
+function buildCategoryMaterialsUrl(
+  categoryId: string,
+  query?: CategoryMaterialsQuery
+): string {
+  const base = `${API_BASE_URL}/${categoryMaterialsPath(categoryId)}`;
+  const params = new URLSearchParams();
+  const page = query?.page ?? 1;
+  const pageSize = Math.min(
+    CATEGORY_MATERIALS_MAX_PAGE_SIZE,
+    query?.pageSize ?? CATEGORY_MATERIALS_DEFAULT_PAGE_SIZE
+  );
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  const q = query?.q?.trim();
+  if (q) params.set("q", q);
+  return `${base}?${params.toString()}`;
+}
+
 function extractMaterialsFromApiPayload(
   payload: unknown,
   fallbackCategoryId?: string
@@ -162,18 +241,21 @@ async function parseMaterialsResponse(res: Response): Promise<MaterialsApiRespon
   };
 }
 
-export async function fetchMaterialsByCategory(
+export async function fetchMaterialsByCategoryPage(
   categoryId: string,
-  token: string
-): Promise<MaterialsApiResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/${categoryMaterialsPath(categoryId)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  token: string,
+  query?: CategoryMaterialsQuery
+): Promise<CategoryMaterialsPageResult> {
+  const page = query?.page ?? 1;
+  const pageSize = Math.min(
+    CATEGORY_MATERIALS_MAX_PAGE_SIZE,
+    query?.pageSize ?? CATEGORY_MATERIALS_DEFAULT_PAGE_SIZE
   );
+  const res = await fetch(buildCategoryMaterialsUrl(categoryId, { ...query, page, pageSize }), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
   if (!res.ok) {
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
@@ -182,10 +264,24 @@ export async function fetchMaterialsByCategory(
     message?: unknown;
     data?: unknown;
   };
+  const parsed = parseCategoryMaterialsPayload(
+    json.data,
+    categoryId,
+    page,
+    pageSize
+  );
   return {
     message: String(json.message ?? ""),
-    data: extractMaterialsFromApiPayload(json.data, categoryId),
+    ...parsed,
   };
+}
+
+export async function fetchMaterialsByCategory(
+  categoryId: string,
+  token: string,
+  query?: CategoryMaterialsQuery
+): Promise<CategoryMaterialsPageResult> {
+  return fetchMaterialsByCategoryPage(categoryId, token, query);
 }
 
 export async function fetchAllMaterials(

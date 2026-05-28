@@ -8,3 +8,6 @@ export function categoryMaterialsPath(categoryId: string): string {
   const id = encodeURIComponent(categoryId);
   return `category/materials/${id}`;
 }
+
+export const CATEGORY_MATERIALS_DEFAULT_PAGE_SIZE = 50;
+export const CATEGORY_MATERIALS_MAX_PAGE_SIZE = 100;
