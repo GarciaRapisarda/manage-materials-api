@@ -10,7 +10,9 @@ import {
   LARGE_IMPORT_THRESHOLD,
 } from "../lib/import-plan";
 import { normalizeCategoryFromApi } from "../services/categories";
-import { normalizeMaterialFromApi } from "../services/materials";
+import {
+  fetchAllMaterials,
+} from "../services/materials";
 import type { Category } from "../types/category";
 import type { Material } from "../types/material";
 
@@ -70,12 +72,8 @@ async function main() {
     ? categoriesJson.data.map((row) => normalizeCategoryFromApi(row))
     : [];
 
-  const materialsJson = await fetchJson<{ data?: unknown }>(
-    `${API_BASE_URL}/materials/all`
-  );
-  const materials: Material[] = Array.isArray(materialsJson.data)
-    ? materialsJson.data.map((row) => normalizeMaterialFromApi(row))
-    : [];
+  const materialsJson = await fetchAllMaterials();
+  const materials: Material[] = materialsJson.data;
 
   function resolveCategoryId(categoryName: string): string {
     if (!categoryName?.trim()) return "";

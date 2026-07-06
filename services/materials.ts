@@ -226,21 +226,6 @@ function extractMaterialsFromApiPayload(
   return [];
 }
 
-async function parseMaterialsResponse(res: Response): Promise<MaterialsApiResponse> {
-  if (!res.ok) {
-    throw new Error(`Error ${res.status}: ${res.statusText}`);
-  }
-
-  const json = (await res.json()) as {
-    message?: unknown;
-    data?: unknown;
-  };
-  return {
-    message: String(json.message ?? ""),
-    data: extractMaterialsFromApiPayload(json.data),
-  };
-}
-
 export async function fetchMaterialsByCategoryPage(
   categoryId: string,
   token: string,
@@ -284,15 +269,60 @@ export async function fetchMaterialsByCategory(
   return fetchMaterialsByCategoryPage(categoryId, token, query);
 }
 
-export async function fetchAllMaterials(
-  token: string
+async function fetchMaterialsAllPages(
+  headers?: HeadersInit
 ): Promise<MaterialsApiResponse> {
-  const res = await fetch(`${API_BASE_URL}/materials/all`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  return parseMaterialsResponse(res);
+  const pageSize = CATEGORY_MATERIALS_MAX_PAGE_SIZE;
+  const allMaterials: Material[] = [];
+  let message = "";
+  let page = 1;
+
+  while (true) {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    const res = await fetch(
+      `${API_BASE_URL}/materials/all?${params.toString()}`,
+      { headers }
+    );
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${res.statusText}`);
+    }
+
+    const json = (await res.json()) as { message?: unknown; data?: unknown };
+    message = String(json.message ?? message);
+
+    if (Array.isArray(json.data)) {
+      return {
+        message,
+        data: mapMaterialRows(json.data, ""),
+      };
+    }
+
+    const parsed = parseCategoryMaterialsPayload(
+      json.data,
+      "",
+      page,
+      pageSize
+    );
+    allMaterials.push(...parsed.data);
+
+    if (!parsed.hasMore) break;
+    page++;
+  }
+
+  return { message, data: allMaterials };
+}
+
+export async function fetchAllMaterials(
+  token?: string
+): Promise<MaterialsApiResponse> {
+  const headers: HeadersInit = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return fetchMaterialsAllPages(headers);
 }
 
 export async function deleteMaterial(

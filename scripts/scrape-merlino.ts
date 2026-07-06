@@ -72,23 +72,47 @@ function parsePrice(raw: string): number {
   return isNaN(num) ? 0 : num;
 }
 
-function categoryPageUrl(slug: string, page: number): string {
-  const base = `${MERLINO_BASE}/${slug}`;
+function categoryBaseUrl(target: ScrapeTarget): string {
+  if (target.url) {
+    try {
+      const u = new URL(target.url);
+      return `${u.origin}${u.pathname}`.replace(/\/$/, "");
+    } catch {
+      // fall through
+    }
+  }
+  return `${MERLINO_BASE}/${target.slug}`;
+}
+
+function categoryPageUrl(target: ScrapeTarget, page: number): string {
+  const base = categoryBaseUrl(target);
   return page <= 1 ? base : `${base}?page=${page}`;
 }
 
-async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "es-AR,es;q=0.9",
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
-  return res.text();
+async function fetchCategoryHtml(url: string): Promise<string | null> {
+  const retriable = new Set([429, 502, 503, 504]);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "es-AR,es;q=0.9",
+      },
+    });
+
+    if (res.ok) return res.text();
+    if (res.status === 404 || res.status === 410) return null;
+    if (retriable.has(res.status) && attempt === 0) {
+      await delay(DELAY_MS * 2);
+      continue;
+    }
+    throw new Error(`HTTP ${res.status}: ${url}`);
+  }
+
+  return null;
 }
 
 function extractProductId(url: string, sku?: string): string {
@@ -181,15 +205,21 @@ function getTotalPages(html: string): number {
 async function scrapeCategory(
   target: ScrapeTarget,
   maxPages: number
-): Promise<ScrapedProduct[]> {
+): Promise<{ products: ScrapedProduct[]; notFound: boolean }> {
   const all: ScrapedProduct[] = [];
   const seen = new Set<string>();
   let totalPages = 1;
+  let notFound = false;
 
   for (let page = 1; page <= maxPages; page++) {
-    const url = categoryPageUrl(target.slug, page);
+    const url = categoryPageUrl(target, page);
     console.log(`  Fetching ${url}`);
-    const html = await fetchHtml(url);
+    const html = await fetchCategoryHtml(url);
+    if (html === null) {
+      console.log(`  Omitido: categoría no encontrada (404) en ${url}`);
+      notFound = true;
+      break;
+    }
     if (page === 1) {
       totalPages = Math.min(getTotalPages(html), maxPages);
       console.log(`  Páginas a recorrer: ${totalPages}`);
@@ -208,7 +238,7 @@ async function scrapeCategory(
     if (page >= totalPages || batch.length === 0) break;
     await delay(DELAY_MS);
   }
-  return all;
+  return { products: all, notFound };
 }
 
 function loadScrapeTargets(outputDir: string): ScrapeTarget[] {
@@ -336,14 +366,25 @@ async function runScrape(
 ): Promise<void> {
   const all: ScrapedProduct[] = [];
   const seenUrl = new Set<string>();
+  const skipped: string[] = [];
 
   for (const target of targets) {
     console.log(`\n${target.name} (${target.slug}) -> ${target.categoryMapped}`);
-    const batch = await scrapeCategory(target, maxPagesPerCategory);
-    for (const p of batch) {
-      if (seenUrl.has(p.url)) continue;
-      seenUrl.add(p.url);
-      all.push(p);
+    try {
+      const { products: batch, notFound } = await scrapeCategory(
+        target,
+        maxPagesPerCategory
+      );
+      if (notFound) skipped.push(target.slug);
+      for (const p of batch) {
+        if (seenUrl.has(p.url)) continue;
+        seenUrl.add(p.url);
+        all.push(p);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(`  Error en categoría, se continúa: ${message}`);
+      skipped.push(target.slug);
     }
     await delay(DELAY_MS);
   }
@@ -360,6 +401,14 @@ async function runScrape(
     "utf-8"
   );
   console.log(`\nDone. ${all.length} productos.`);
+  if (skipped.length > 0) {
+    console.log(
+      `Categorías omitidas (${skipped.length}): ${skipped.slice(0, 8).join(", ")}${skipped.length > 8 ? "..." : ""}`
+    );
+    console.log(
+      "Tip: si hay muchas omitidas, corré npm run scrape:merlino:categories y volvé a intentar."
+    );
+  }
   console.log(`Raw: ${rawPath}`);
   console.log(`Materials: ${materialsPath}`);
 }
@@ -408,7 +457,7 @@ async function main(): Promise<void> {
               {
                 slug: TEST_CATEGORY_SLUG,
                 name: "Áridos",
-                url: categoryPageUrl(TEST_CATEGORY_SLUG, 1),
+                url: `${MERLINO_BASE}/${TEST_CATEGORY_SLUG}`,
                 categoryMapped: mapped,
               },
             ];
