@@ -262,7 +262,7 @@ Formato: [{"slug":"...","myCategory":"..."}, ...] — mismo orden y cantidad que
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1",
       messages: [
         { role: "system", content: categoriasDoc },
         { role: "user", content: prompt },

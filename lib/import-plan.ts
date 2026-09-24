@@ -7,6 +7,7 @@ export interface ImportPlan {
   create: number;
   update: number;
   skip: number;
+  hold: number;
   createsLocal: number;
   createsNeedLlm: number;
   createsNoContext: number;
@@ -25,6 +26,7 @@ export function analyzeImportPreview(
   let create = 0;
   let update = 0;
   let skip = 0;
+  let hold = 0;
   let createsLocal = 0;
   let createsNeedLlm = 0;
   let createsNoContext = 0;
@@ -33,6 +35,7 @@ export function analyzeImportPreview(
   for (const item of items) {
     if (item.action === "create") create++;
     else if (item.action === "update") update++;
+    else if (item.action === "hold") hold++;
     else skip++;
 
     if (item.action !== "create") continue;
@@ -67,6 +70,7 @@ export function analyzeImportPreview(
     create,
     update,
     skip,
+    hold,
     createsLocal,
     createsNeedLlm,
     createsNoContext,

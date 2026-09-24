@@ -12,11 +12,13 @@ export interface AlumetalMaterial {
   scrapedAt?: string;
 }
 
-export function alumetalToParsed(items: AlumetalMaterial[]): ParsedMaterial[] {
+export function alumetalToParsed(items: AlumetalMaterial[], source?: string | null): ParsedMaterial[] {
   return items.map((item) => ({
     name: item.name,
     price: item.price,
     unit: item.unit || "u",
     sectionContext: item.sourceCategory ?? null,
+    source: source ?? null,
+    sourceProductId: item.sourceProductId ?? null,
   }));
 }

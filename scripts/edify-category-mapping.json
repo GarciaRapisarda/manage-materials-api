@@ -61,5 +61,20 @@
   "pisos/ceramicos1": "Suelos y Revestimientos",
   "tubos-y-accesorios-sanitarios/tubo-pvc-jp": "Instalaciones Sanitarias",
   "tubos-y-accesorios-sanitarios/tubos-polipropileno-cloacal-je": "Instalaciones Sanitarias",
-  "tubos-y-accesorios-sanitarios/tubos-polipropileno-fusion": "Instalaciones Sanitarias"
+  "tubos-y-accesorios-sanitarios/tubos-polipropileno-fusion": "Instalaciones Sanitarias",
+  "banos-y-griferias/piletas-y-mesadas-de-cocina": "Artefactos, Griferías y Accesorios Sanitarios",
+  "banos-y-griferias/sanitarios": "Artefactos, Griferías y Accesorios Sanitarios",
+  "ladrillos-y-bloques": "Ladrillos y Bloques",
+  "ladrillos-y-bloques/ladrillos": "Ladrillos y Bloques",
+  "ladrillos-y-bloques/ladrillos-refractarios": "Ladrillos y Bloques",
+  "pisos/adhesivos-p-ceramicos": "Cales, Cementos, Finos, Pegamentos, Pastina y Hormigones",
+  "pisos/guardacantos": "Suelos y Revestimientos",
+  "pisos/piso-flotante": "Suelos y Revestimientos",
+  "revestimientos-e-impermeabilizacion": "Aditivos, Impermeabilizaciones y Aislaciones",
+  "revestimientos-e-impermeabilizacion/membrana": "Aditivos, Impermeabilizaciones y Aislaciones",
+  "revestimientos-e-impermeabilizacion/revoque1": "Yesería",
+  "tanques-y-camaras-septicas": "Instalaciones Sanitarias",
+  "tanques-y-camaras-septicas/tanques": "Instalaciones Sanitarias",
+  "tanques-y-camaras-septicas1": "Instalaciones Sanitarias",
+  "tanques-y-camaras-septicas1/tanques-de-agua": "Instalaciones Sanitarias"
 }

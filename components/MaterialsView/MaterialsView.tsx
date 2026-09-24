@@ -592,6 +592,12 @@ export function MaterialsView() {
         >
           Seleccionar duplicados para eliminar
         </button>
+        <a href="/duplicados" className={styles.selectDuplicatesBtn}>
+          Revisión de duplicados
+        </a>
+        <a href="/nombres" className={styles.selectDuplicatesBtn}>
+          Revisión de nombres
+        </a>
         <button
           onClick={handleDeleteSelected}
           disabled={selectedCount === 0 || deleteState !== null}

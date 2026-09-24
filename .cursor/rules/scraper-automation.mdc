@@ -68,6 +68,14 @@ Parser de categorías válidas desde `docs/categorias-llm-contexto.md`: líneas 
 
 Si `all` scrapea pocas categorías, casi siempre falta el paso de mapeo LLM.
 
+## Todas las tiendas
+
+`npm run scrape:all` (`scripts/scrape-all.ts`) corre el modo `all` de cada origen en orden y sigue si uno falla. `--refresh-categories` antepone `categories` + `map-categories-llm.ts` por tienda (solo slugs sin nombre interno válido). No importa a la API. Los comandos por origen se mantienen.
+
+Al terminar un scrape `all`, `scripts/write-last-update.ts` escribe `scripts/output/{origen}-last-update.json` (`source`, `updatedAt` UTC, `productCount`, `materialsFile`) y rearma `scripts/output/last-update.json` con la última fecha exitosa de cada origen. `test` y `categories` no actualizan esa fecha. Un fallo no borra la fecha anterior de esa tienda.
+
 ## App (import)
 
-JSON materials → import en UI → LLM asigna `categoryId` + unidad. `resolveCategoryId` matchea por nombre si `sourceCategory` ya es categoría interna.
+JSON materials → import en UI → LLM asigna `categoryId` + unidad solo si falta `sourceCategory`. `resolveCategoryId` matchea por nombre si `sourceCategory` ya es categoría interna.
+
+Actualización de precios: `npm run scrape:all`, después **Cargar plan** por tienda. `sourceProductId` se enlaza en `scripts/output/source-links.json` la primera vez que el nombre coincide. Un precio al doble o a menos de la mitad no se pisa (`Precio raro`). El mismo id con otro color, medida, mano, calidad o código de modelo no se actualiza (`Nombre distinto`). Esas filas van a `import-anomalies-<fecha>.json` si se pulsa **Anotar con modelo**. No borrar ni renombrar desde ahí. El procedimiento para la persona está en `README.md`, sección **Próxima actualización de precios**.

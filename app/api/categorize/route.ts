@@ -78,7 +78,7 @@ Formato: [{"categoryId":"21","unit":"u"}, ...]`;
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4.1",
         messages: [
           {
             role: "system",

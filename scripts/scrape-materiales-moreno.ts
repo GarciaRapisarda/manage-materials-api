@@ -3,6 +3,7 @@ import * as path from "path";
 import * as cheerio from "cheerio";
 import { MORENO_SHOP, DELAY_MS, CATEGORY_MAP } from "./moreno-category-map";
 import { loadMorenoMapping } from "./load-moreno-mapping";
+import { writeSourceLastUpdate } from "./write-last-update";
 
 interface ScrapedProduct {
   name: string;
@@ -251,6 +252,15 @@ async function main() {
   console.log(`\nDone. ${products.length} products.`);
   console.log(`Raw: ${rawPath}`);
   console.log(`Materials: ${materialsPath}`);
+
+  if (mode !== "test") {
+    writeSourceLastUpdate(outputDir, {
+      source: "moreno",
+      updatedAt: new Date().toISOString(),
+      productCount: products.length,
+      materialsFile: "moreno-materials.json",
+    });
+  }
 }
 
 main().catch((e) => {

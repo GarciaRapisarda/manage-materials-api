@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, memo } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { parseChunk } from "@/lib/chunk-parser";
 import {
   matchChunkToMaterials,
@@ -8,6 +8,7 @@ import {
   type ChunkPreviewItem,
 } from "@/lib/chunk-matcher";
 import { alumetalToParsed, type AlumetalMaterial } from "@/lib/alumetal-importer";
+import { sourceLinkKey } from "@/lib/import-guard";
 import {
   fetchAllMaterials,
   patchMaterial,
@@ -33,6 +34,14 @@ interface ChunkImportSectionProps {
   onSuccess: () => void;
 }
 
+type ScrapeUpdateRow = {
+  source: string;
+  label: string;
+  updatedAt: string;
+  productCount: number;
+  materialsFile: string;
+};
+
 function ChunkImportSectionInner({
   categories,
   onSuccess,
@@ -55,8 +64,27 @@ function ChunkImportSectionInner({
     failed: string | null;
   } | null>(null);
   const [alumetalError, setAlumetalError] = useState<string | null>(null);
+  const [scrapeUpdates, setScrapeUpdates] = useState<ScrapeUpdateRow[]>([]);
+  const [loadingSource, setLoadingSource] = useState<string | null>(null);
+  const [loadedSourceLabel, setLoadedSourceLabel] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const matchMaterialsRef = useRef<Material[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/scrape-updates")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { sources?: ScrapeUpdateRow[] };
+        if (!cancelled) setScrapeUpdates(data.sources ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setScrapeUpdates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function getMaterialsForMatch(): Promise<Material[]> {
     if (matchMaterialsRef.current) {
@@ -144,7 +172,7 @@ function ChunkImportSectionInner({
     const plan = analyzeImportPreview(itemsPreview, resolveCategoryId);
     setImportPlan(plan);
     setPreview(itemsPreview);
-    setIncluded(new Set(itemsPreview.map((_, i) => i)));
+    setIncluded(new Set(itemsPreview.flatMap((item, index) => (item.action === "hold" ? [] : [index]))));
     setExecResult(null);
     setCategoriesAssigned(false);
 
@@ -159,6 +187,50 @@ function ChunkImportSectionInner({
     setPreview(withCategory);
   }
 
+  async function loadSourceLinks(): Promise<Record<string, string>> {
+    const response = await fetch("/api/source-links");
+    if (!response.ok) return {};
+    const body = (await response.json()) as { links?: Record<string, string> };
+    return body.links ?? {};
+  }
+
+  async function importMaterialsItems(
+    items: AlumetalMaterial[],
+    source: string | null,
+    sourceLabel: string | null
+  ) {
+    if (items.length === 0) {
+      setAlumetalError("El JSON no contiene un array de materiales");
+      return;
+    }
+    const first = items[0];
+    if (typeof first?.name !== "string" || typeof first?.price !== "number") {
+      setAlumetalError(
+        "Formato inválido. Esperado: array de { name, price, sourceCategory?, unit? }"
+      );
+      return;
+    }
+    const parsed = alumetalToParsed(items, source);
+    const matchMaterials = await getMaterialsForMatch();
+    const links = await loadSourceLinks();
+    const itemsPreview = matchChunkToMaterials(parsed, matchMaterials, links);
+    setLoadedSourceLabel(sourceLabel);
+    await prepareImportPreview(itemsPreview);
+  }
+
+  function readMaterialsPayload(data: unknown): AlumetalMaterial[] {
+    if (Array.isArray(data)) return data as AlumetalMaterial[];
+    if (
+      data &&
+      typeof data === "object" &&
+      "data" in data &&
+      Array.isArray((data as { data: unknown }).data)
+    ) {
+      return (data as { data: AlumetalMaterial[] }).data;
+    }
+    return [];
+  }
+
   function handleAlumetalFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -168,30 +240,8 @@ function ChunkImportSectionInner({
       void (async () => {
         try {
           const text = reader.result as string;
-          const data = JSON.parse(text) as AlumetalMaterial[] | { data: AlumetalMaterial[] };
-          const items: AlumetalMaterial[] = Array.isArray(data)
-            ? data
-            : "data" in data && Array.isArray(data.data)
-              ? data.data
-              : [];
-          if (items.length === 0) {
-            setAlumetalError("El JSON no contiene un array de materiales");
-            return;
-          }
-          const first = items[0];
-          if (
-            typeof first?.name !== "string" ||
-            typeof first?.price !== "number"
-          ) {
-            setAlumetalError(
-              "Formato inválido. Esperado: array de { name, price, sourceCategory?, unit? }"
-            );
-            return;
-          }
-          const parsed = alumetalToParsed(items);
-          const matchMaterials = await getMaterialsForMatch();
-          const itemsPreview = matchChunkToMaterials(parsed, matchMaterials);
-          await prepareImportPreview(itemsPreview);
+          const data = JSON.parse(text) as unknown;
+          await importMaterialsItems(readMaterialsPayload(data), null, null);
         } catch (err) {
           setAlumetalError(
             err instanceof Error ? err.message : "Error al leer el archivo"
@@ -203,12 +253,71 @@ function ChunkImportSectionInner({
     e.target.value = "";
   }
 
+  async function loadScrapedSource(row: ScrapeUpdateRow) {
+    setAlumetalError(null);
+    setLoadingSource(row.source);
+    try {
+      const res = await fetch(
+        `/api/scrape-updates?source=${encodeURIComponent(row.source)}`
+      );
+      const data = (await res.json()) as unknown;
+      if (!res.ok) {
+        const message =
+          data &&
+          typeof data === "object" &&
+          "error" in data &&
+          typeof (data as { error: unknown }).error === "string"
+            ? (data as { error: string }).error
+            : "No se pudo leer el JSON de esa tienda";
+        setAlumetalError(message);
+        return;
+      }
+      await importMaterialsItems(readMaterialsPayload(data), row.source, row.label);
+    } catch (err) {
+      setAlumetalError(
+        err instanceof Error ? err.message : "Error al cargar la tienda"
+      );
+    } finally {
+      setLoadingSource(null);
+    }
+  }
+
+  async function annotateHolds() {
+    if (!preview) return;
+    const items = preview
+      .filter((item) => item.action === "hold")
+      .map((item) => ({
+        source: item.parsed.source ?? "",
+        sourceProductId: item.parsed.sourceProductId ?? "",
+        materialId: item.matchedMaterial?.id ?? null,
+        reason: item.holdReason ?? "price",
+        currentName: item.matchedMaterial?.name ?? "",
+        incomingName: item.parsed.name,
+        currentPrice: item.matchedMaterial?.price ?? 0,
+        incomingPrice: item.parsed.price,
+      }));
+    setAlumetalError(null);
+    const response = await fetch("/api/import-anomalies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, note: true }),
+    });
+    const body = (await response.json()) as { error?: string; items?: number };
+    if (!response.ok) {
+      setAlumetalError(body.error ?? "No se pudo anotar");
+      return;
+    }
+    setExecResult({ updated: 0, created: 0, failed: null });
+    setExecuteProgress(`Notas guardadas para ${body.items ?? items.length} anomalías`);
+  }
+
   async function handleParse() {
     setCategorizeError(null);
     try {
       const parsed = parseChunk(chunkText);
       const matchMaterials = await getMaterialsForMatch();
-      const items = matchChunkToMaterials(parsed, matchMaterials);
+      const links = await loadSourceLinks();
+      const items = matchChunkToMaterials(parsed, matchMaterials, links);
       await prepareImportPreview(items);
     } catch (err) {
       setCategorizeError(
@@ -234,7 +343,7 @@ function ChunkImportSectionInner({
 
   function selectAll(checked: boolean) {
     if (!preview) return;
-    setIncluded(checked ? new Set(preview.map((_, i) => i)) : new Set());
+    setIncluded(checked ? new Set(preview.flatMap((item, index) => (item.action === "hold" ? [] : [index]))) : new Set());
   }
 
   function updateItemField(
@@ -312,26 +421,51 @@ function ChunkImportSectionInner({
     let updated = 0;
     let created = 0;
     let failed: string | null = null;
+    const newLinks: Record<string, string> = {};
+    const remember = (item: ChunkPreviewItem, materialId: string) => {
+      if (!item.parsed.source || !item.parsed.sourceProductId || item.action === "hold") return;
+      newLinks[sourceLinkKey(item.parsed.source, item.parsed.sourceProductId)] = materialId;
+    };
+    const concurrency = 8;
 
-    for (const item of toUpdate) {
-      if (!item.matchedMaterial || item.parsed.price == null) continue;
-      if (isPendingMaterialId(item.matchedMaterial.id)) continue;
-      try {
-        await patchMaterial(
-          item.matchedMaterial.id,
-          { price: item.parsed.price },
-          token
-        );
-        updated++;
-      } catch (e) {
-        failed = item.parsed.name;
-        break;
-      }
+    const updatesToRun = toUpdate.filter(
+      (item) =>
+        item.matchedMaterial &&
+        item.parsed.price != null &&
+        !isPendingMaterialId(item.matchedMaterial.id)
+    );
+
+    if (updatesToRun.length > 0) {
+      let nextUpdate = 0;
+      setExecuteProgress(`Actualizando 0/${updatesToRun.length}...`);
+      await Promise.all(
+        Array.from({ length: concurrency }, async () => {
+          while (nextUpdate < updatesToRun.length && !failed) {
+            const item = updatesToRun[nextUpdate++];
+            if (!item.matchedMaterial || item.parsed.price == null) continue;
+            try {
+              await patchMaterial(
+                item.matchedMaterial.id,
+                { price: item.parsed.price },
+                token
+              );
+              remember(item, item.matchedMaterial.id);
+              updated++;
+              if (updated % 50 === 0 || updated === updatesToRun.length) {
+                setExecuteProgress(
+                  `Actualizando ${updated}/${updatesToRun.length}...`
+                );
+              }
+            } catch {
+              failed = item.parsed.name;
+            }
+          }
+        })
+      );
     }
 
     if (!failed && toCreate.length > 0) {
       const fallbackCategoryId = categories[0]?.id ?? "";
-      const concurrency = 8;
       let next = 0;
       await Promise.all(
         Array.from({ length: concurrency }, async () => {
@@ -347,7 +481,7 @@ function ChunkImportSectionInner({
               )?.id ?? fallbackCategoryId;
             const unit = unitVal && isValidUnit(unitVal) ? unitVal : "u";
             try {
-              await createMaterial(
+              const createdMaterial = await createMaterial(
                 {
                   categoryId,
                   name: getEffectiveName(item),
@@ -358,6 +492,7 @@ function ChunkImportSectionInner({
                 },
                 token
               );
+              remember(item, createdMaterial.id);
               created++;
               if (created % 50 === 0 || created === toCreate.length) {
                 setExecuteProgress(
@@ -376,6 +511,35 @@ function ChunkImportSectionInner({
     setExecuteProgress(null);
     setExecResult({ updated, created, failed });
     if (!failed) {
+      for (const item of toRun) {
+        if (item.action === "skip" && item.matchedMaterial) remember(item, item.matchedMaterial.id);
+      }
+      if (Object.keys(newLinks).length > 0) {
+        await fetch("/api/source-links", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ links: newLinks }),
+        });
+      }
+      const anomalies = preview
+        .filter((item) => item.action === "hold")
+        .map((item) => ({
+          source: item.parsed.source ?? "",
+          sourceProductId: item.parsed.sourceProductId ?? "",
+          materialId: item.matchedMaterial?.id ?? null,
+          reason: item.holdReason ?? "price",
+          currentName: item.matchedMaterial?.name ?? "",
+          incomingName: item.parsed.name,
+          currentPrice: item.matchedMaterial?.price ?? 0,
+          incomingPrice: item.parsed.price,
+        }));
+      if (anomalies.length > 0) {
+        await fetch("/api/import-anomalies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: anomalies }),
+        });
+      }
       matchMaterialsRef.current = null;
       onSuccess();
     }
@@ -424,11 +588,46 @@ function ChunkImportSectionInner({
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
       >
-        {expanded ? "▼" : "▶"} Importar desde chunk
+        {expanded ? "▼" : "▶"} Importar materiales
+        {scrapeUpdates.length > 0
+          ? ` · ${scrapeUpdates.length} tiendas de la última corrida`
+          : ""}
       </button>
 
       {expanded && (
         <div className={styles.content}>
+          {scrapeUpdates.length > 0 && (
+            <div className={styles.runList}>
+              <p className={styles.runTitle}>Última corrida de scrapers</p>
+              <p className={styles.runHint}>
+                Cargar el plan no escribe en la API. Después confirmás con Ejecutar.
+              </p>
+              <ul className={styles.runItems}>
+                {scrapeUpdates.map((row) => (
+                  <li key={row.source} className={styles.runItem}>
+                    <div>
+                      <strong>{row.label}</strong>
+                      <span className={styles.runMeta}>
+                        {row.productCount.toLocaleString("es-AR")} productos ·{" "}
+                        {new Date(row.updatedAt).toLocaleString("es-AR", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.alumetalBtn}
+                      onClick={() => void loadScrapedSource(row)}
+                      disabled={categorizing || loadingSource !== null}
+                    >
+                      {loadingSource === row.source ? "Cargando..." : "Cargar plan"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <textarea
             className={styles.textarea}
             placeholder="Pegá aquí el chunk (MD/TXT) con materiales y precios..."
@@ -481,6 +680,17 @@ function ChunkImportSectionInner({
                 <span className={styles.badgeSkip}>
                   {preview.filter((p) => p.action === "skip").length} sin cambios
                 </span>
+                <span className={styles.badgeHold}>
+                  {preview.filter((p) => p.action === "hold").length} para revisar
+                </span>
+                <button
+                  type="button"
+                  className={styles.parseBtn}
+                  disabled={preview.every((item) => item.action !== "hold")}
+                  onClick={() => void annotateHolds()}
+                >
+                  Anotar con modelo
+                </button>
               </div>
 
               {categorizing && (
@@ -497,6 +707,9 @@ function ChunkImportSectionInner({
 
               {importPlan && (
                 <div className={styles.planBox}>
+                  {loadedSourceLabel && (
+                    <p className={styles.planSource}>{loadedSourceLabel}</p>
+                  )}
                   <strong>Plan de importación</strong> ({importPlan.total}{" "}
                   filas)
                   <ul>
@@ -611,14 +824,20 @@ function ChunkImportSectionInner({
                                   ? styles.badgeUpdate
                                   : item.action === "skip"
                                     ? styles.badgeSkip
-                                    : styles.badgeCreate
+                                    : item.action === "hold"
+                                      ? styles.badgeHold
+                                      : styles.badgeCreate
                               }
                             >
                               {item.action === "update"
                                 ? "Actualizar"
                                 : item.action === "skip"
                                   ? "Sin cambios"
-                                  : "Crear"}
+                                  : item.action === "hold"
+                                    ? item.holdReason === "identity"
+                                      ? "Nombre distinto"
+                                      : "Precio raro"
+                                    : "Crear"}
                             </span>
                           </td>
                           <td className={styles.tdName}>

@@ -1,12 +1,13 @@
 import type { ParsedMaterial } from "./chunk-parser";
 import type { Material } from "@/types/material";
-import { normalizeForMaterialMatch } from "./material-name-match";
+import { identityChanged, priceJumps, sourceLinkKey, type HoldReason } from "./import-guard";
+import { hygieneMatchKey, cleanDisplayName } from "./name-hygiene";
 
 export function normalizeForMatch(name: string): string {
-  return normalizeForMaterialMatch(name);
+  return hygieneMatchKey(name);
 }
 
-export type ChunkPreviewAction = "update" | "create" | "skip";
+export type ChunkPreviewAction = "update" | "create" | "skip" | "hold";
 
 const PENDING_ID_PREFIX = "__pending_";
 
@@ -21,11 +22,39 @@ export interface ChunkPreviewItem {
   index: number;
   llmResult?: { categoryId: string; unit: string };
   userOverride?: { categoryId?: string; unit?: string; name?: string };
+  holdReason?: HoldReason;
+}
+
+function pickLatest(matches: Material[]): Material | null {
+  const real = matches.filter((material) => !isPendingMaterialId(material.id));
+  if (real.length === 0) return null;
+  return [...real].sort((a, b) => {
+    const ta = new Date(a.updated_at).getTime();
+    const tb = new Date(b.updated_at).getTime();
+    if (tb !== ta) return tb - ta;
+    const na = Number(a.id);
+    const nb = Number(b.id);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return nb - na;
+    return b.id.localeCompare(a.id, undefined, { numeric: true });
+  })[0];
+}
+
+function decideAction(
+  material: Material | null,
+  price: number | null,
+  incomingName: string
+): { action: ChunkPreviewAction; holdReason?: HoldReason } {
+  if (!material) return { action: "create" };
+  if (identityChanged(material.name, incomingName)) return { action: "hold", holdReason: "identity" };
+  if (price != null && priceJumps(material.price, price)) return { action: "hold", holdReason: "price" };
+  if (price != null && Math.abs(price - material.price) < 0.01) return { action: "skip" };
+  return { action: "update" };
 }
 
 export function matchChunkToMaterials(
   parsed: ParsedMaterial[],
-  materials: Material[]
+  materials: Material[],
+  links: Record<string, string> = {}
 ): ChunkPreviewItem[] {
   const byNormalized = new Map<string, Material[]>();
   for (const m of materials) {
@@ -37,37 +66,25 @@ export function matchChunkToMaterials(
 
   const result: ChunkPreviewItem[] = [];
   for (let i = 0; i < parsed.length; i++) {
-    const p = parsed[i];
+    const p = { ...parsed[i], name: cleanDisplayName(parsed[i].name) };
     const key = normalizeForMatch(p.name);
-    const matches = (byNormalized.get(key) ?? []).filter(
-      (m) => !isPendingMaterialId(m.id)
-    );
-    const best =
-      matches.length > 0
-        ? [...matches].sort((a, b) => {
-            const ta = new Date(a.updated_at).getTime();
-            const tb = new Date(b.updated_at).getTime();
-            if (tb !== ta) return tb - ta;
-            const na = Number(a.id);
-            const nb = Number(b.id);
-            if (!Number.isNaN(na) && !Number.isNaN(nb)) return nb - na;
-            return b.id.localeCompare(a.id, undefined, { numeric: true });
-          })[0]
-        : null;
-
-    let action: ChunkPreviewAction = best ? "update" : "create";
-    if (best && p.price != null && Math.abs(p.price - best.price) < 0.01) {
-      action = "skip";
-    }
+    const linkId =
+      p.source && p.sourceProductId
+        ? links[sourceLinkKey(p.source, p.sourceProductId)]
+        : undefined;
+    const linked = linkId ? materials.find((material) => material.id === linkId) ?? null : null;
+    const best = linked ?? pickLatest(byNormalized.get(key) ?? []);
+    const decision = decideAction(best, p.price, p.name);
 
     result.push({
       parsed: p,
-      action,
+      action: decision.action,
+      holdReason: decision.holdReason,
       matchedMaterial: best,
       index: i,
     });
 
-    if (action === "create") {
+    if (decision.action === "create") {
       const pending: Material = {
         id: `${PENDING_ID_PREFIX}${i}`,
         name: p.name,

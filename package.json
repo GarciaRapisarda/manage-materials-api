@@ -34,7 +34,10 @@
     "map:edify:categories": "tsx scripts/map-categories-llm.ts edify",
     "map:moreno:categories": "tsx scripts/map-categories-llm.ts moreno",
     "map:categories:pending": "tsx scripts/map-categories-llm.ts all-pending",
-    "analyze:import": "tsx scripts/analyze-import-json.ts"
+    "scrape:all": "tsx scripts/scrape-all.ts",
+    "analyze:import": "tsx scripts/analyze-import-json.ts",
+    "duplicates:review": "tsx scripts/review-duplicates.ts",
+    "names:review": "tsx scripts/review-names.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

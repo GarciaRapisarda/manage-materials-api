@@ -3,6 +3,8 @@ export interface ParsedMaterial {
   price: number | null;
   unit: string | null;
   sectionContext: string | null;
+  source?: string | null;
+  sourceProductId?: string | null;
 }
 
 const PRICE_REGEX = /\$\s*([\d.]+),(\d{2})\s*$/;

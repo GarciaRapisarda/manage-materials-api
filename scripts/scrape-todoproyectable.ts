@@ -6,6 +6,7 @@ import {
   DELAY_MS,
 } from "./todoproyectable-category-map";
 import { loadTodoProyectableMapping } from "./load-todoproyectable-mapping";
+import { writeSourceLastUpdate } from "./write-last-update";
 
 const CATEGORY_SLUGS = new Set([
   "materiales-proyectables", "cementicios", "yesos", "adherentes", "mallas",
@@ -363,6 +364,15 @@ async function main() {
   console.log(`\nDone. ${products.length} products.`);
   console.log(`Raw: ${rawPath}`);
   console.log(`Materials: ${materialsPath}`);
+
+  if (mode !== "test") {
+    writeSourceLastUpdate(outputDir, {
+      source: "todoproyectable",
+      updatedAt: new Date().toISOString(),
+      productCount: products.length,
+      materialsFile: "todoproyectable-materials.json",
+    });
+  }
 }
 
 main().catch((e) => {

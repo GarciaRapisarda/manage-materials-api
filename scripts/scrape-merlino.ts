@@ -8,6 +8,7 @@ import {
   DELAY_MS,
 } from "./merlino-category-map";
 import { loadMerlinoMapping } from "./load-merlino-mapping";
+import { writeSourceLastUpdate } from "./write-last-update";
 
 interface ScrapedProduct {
   name: string;
@@ -401,6 +402,14 @@ async function runScrape(
     "utf-8"
   );
   console.log(`\nDone. ${all.length} productos.`);
+  if (outputSuffix === "all") {
+    writeSourceLastUpdate(outputDir, {
+      source: "merlino",
+      updatedAt: new Date().toISOString(),
+      productCount: all.length,
+      materialsFile: `merlino-materials-${outputSuffix}.json`,
+    });
+  }
   if (skipped.length > 0) {
     console.log(
       `Categorías omitidas (${skipped.length}): ${skipped.slice(0, 8).join(", ")}${skipped.length > 8 ? "..." : ""}`

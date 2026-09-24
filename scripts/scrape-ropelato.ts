@@ -7,6 +7,7 @@ import {
   DELAY_MS,
 } from "./ropelato-category-map";
 import { loadRopelatoMapping } from "./load-ropelato-mapping";
+import { writeSourceLastUpdate } from "./write-last-update";
 
 interface ScrapedProduct {
   name: string;
@@ -363,6 +364,14 @@ async function runScrape(
   console.log(`\nDone. ${all.length} productos.`);
   console.log(`Raw: ${rawPath}`);
   console.log(`Materials: ${materialsPath}`);
+  if (outputSuffix === "all") {
+    writeSourceLastUpdate(outputDir, {
+      source: "ropelato",
+      updatedAt: new Date().toISOString(),
+      productCount: all.length,
+      materialsFile: `ropelato-materials-${outputSuffix}.json`,
+    });
+  }
 }
 
 async function main(): Promise<void> {

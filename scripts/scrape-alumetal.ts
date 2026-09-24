@@ -3,6 +3,7 @@ import * as path from "path";
 import * as cheerio from "cheerio";
 import { ALUMETAL_BASE, DELAY_MS } from "./alumetal-category-map";
 import { loadCategoryMapping } from "./load-category-mapping";
+import { writeSourceLastUpdate } from "./write-last-update";
 
 interface ScrapedProduct {
   name: string;
@@ -300,6 +301,15 @@ async function main() {
   console.log(`\nDone. ${products.length} products.`);
   console.log(`Raw: ${rawPath}`);
   console.log(`Materials format: ${materialsPath}`);
+
+  if (mode !== "test") {
+    writeSourceLastUpdate(outputDir, {
+      source: "alumetal",
+      updatedAt: new Date().toISOString(),
+      productCount: products.length,
+      materialsFile: "alumetal-materials.json",
+    });
+  }
 }
 
 main().catch((e) => {

@@ -1,4 +1,8 @@
 {
+  "261-hierros-lisos": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
+  "360-angulo": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
+  "48-construccion-civil": "Materiales de construcción",
+  "61-construccion-en-seco-y-cielorrasos": "Construcción en Seco",
   "454-cerraduras-y-cerrojos": "Carpintería Metálica",
   "471-corredizo": "Carpintería Metálica",
   "455-manijas-y-manijones": "Carpintería Metálica",
@@ -68,9 +72,7 @@
   "413-policarbonatos": "Chapas, Tejas, Losas y Zinguerías",
   "389-chapas-sinusoidal": "Chapas, Tejas, Losas y Zinguerías",
   "402-chapas-trapezoidal": "Chapas, Tejas, Losas y Zinguerías",
-  "360-angulo": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
   "334-armalogic": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
-  "261-hierros-lisos": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
   "320-mallas": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
   "318-metales-desplegados": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
   "99-hierros-nervados": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
@@ -197,5 +199,10 @@
   "166-piedras-naturales-y-simil-piedra": "Mármoles y Granito",
   "351-pisos-flotantes-y-vinilicos": "Suelos y Revestimientos",
   "541-revestimientos": "Suelos y Revestimientos",
-  "476-sale-ropelato": "Pintura"
+  "476-sale-ropelato": "Pintura",
+  "550-roca-napur": "Artefactos, Griferías y Accesorios Sanitarios",
+  "549-roca-tevo": "Artefactos, Griferías y Accesorios Sanitarios",
+  "552-herramientas": "Herramientas",
+  "548-broca-perno-y-anclaje": "Hierros, Mallas, Alambres, Tornillos, Clavos, Cercos",
+  "145-ropeweek": "Herramientas"
 }

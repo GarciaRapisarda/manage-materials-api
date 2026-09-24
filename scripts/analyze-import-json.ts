@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { config } from "dotenv";
 import { API_BASE_URL, CATEGORIES_PATH } from "../config/api";
@@ -60,7 +60,14 @@ async function main() {
 
   const filePath = resolve(process.cwd(), fileArg);
   const items = loadJson(filePath);
-  const parsed = alumetalToParsed(items);
+  const source = ["alumetal", "todoproyectable", "edify", "moreno", "merlino", "ropelato"].find((name) =>
+    filePath.toLowerCase().includes(name)
+  );
+  const parsed = alumetalToParsed(items, source ?? null);
+  const linksPath = resolve(process.cwd(), "scripts", "output", "source-links.json");
+  const links = existsSync(linksPath)
+    ? ((JSON.parse(readFileSync(linksPath, "utf-8")) as { links?: Record<string, string> }).links ?? {})
+    : {};
 
   const categoriesPath = CATEGORIES_PATH.startsWith("/")
     ? CATEGORIES_PATH.slice(1)
@@ -87,7 +94,7 @@ async function main() {
     return c?.id ?? "";
   }
 
-  const preview = matchChunkToMaterials(parsed, materials);
+  const preview = matchChunkToMaterials(parsed, materials, links);
   const plan = analyzeImportPreview(preview, resolveCategoryId);
 
   const contexts = new Map<string, number>();
@@ -103,7 +110,7 @@ async function main() {
 
   console.log("--- Plan de importación ---");
   console.log(`Total filas: ${plan.total}`);
-  console.log(`Crear: ${plan.create} · Actualizar: ${plan.update} · Sin cambios: ${plan.skip}`);
+  console.log(`Crear: ${plan.create} · Actualizar: ${plan.update} · Sin cambios: ${plan.skip} · Para revisar: ${plan.hold}`);
   console.log(
     `Categoría sin LLM: ${plan.createsLocal} · con LLM: ${plan.createsNeedLlm}`
   );

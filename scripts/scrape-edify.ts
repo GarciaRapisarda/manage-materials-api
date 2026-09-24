@@ -3,6 +3,7 @@ import * as path from "path";
 import * as cheerio from "cheerio";
 import { EDIFY_BASE, DELAY_MS } from "./edify-category-map";
 import { loadEdifyMapping } from "./load-edify-mapping";
+import { writeSourceLastUpdate } from "./write-last-update";
 
 interface EdifyCategory {
   slug: string;
@@ -147,6 +148,14 @@ async function fetchAllCategories(): Promise<EdifyCategory[]> {
   return all;
 }
 
+function decodeEmbeddedJsonString(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw.replace(/\\"/g, '"');
+  }
+}
+
 function extractProductsFromHtml(
   html: string,
   contextCategorySlug: string,
@@ -166,9 +175,10 @@ function extractProductsFromHtml(
     const nameInWindow = window_.match(/"item_name":"((?:[^"\\]|\\.)*)"/);
     const priceInWindow = window_.match(/"price":(\d+(?:\.\d+)?)/);
     const brandInWindow = window_.match(/"item_brand":"((?:[^"\\]|\\.)*)"/);
-    const name = nameInWindow ? nameInWindow[1].replace(/\\"/g, '"') : "";
+    const name = nameInWindow ? decodeEmbeddedJsonString(nameInWindow[1]) : "";
     const price = priceInWindow ? parseFloat(priceInWindow[1]) : 0;
-    const brand = brandInWindow && brandInWindow[1].trim() ? brandInWindow[1] : null;
+    const brandRaw = brandInWindow ? decodeEmbeddedJsonString(brandInWindow[1]).trim() : "";
+    const brand = brandRaw ? brandRaw : null;
     if (id && name && price > 0) {
       dataByProductId.set(id, { name, price, brand });
     }
@@ -179,9 +189,12 @@ function extractProductsFromHtml(
     const priceRe = /"price":(\d+(?:\.\d+)?)/g;
     const brandRe = /"item_brand":"((?:[^"\\]|\\.)*)"/g;
     const productIdRe = /"product_id":"(\d+)"/g;
-    const names = [...html.matchAll(nameRe)].map((x) => x[1].replace(/\\"/g, '"'));
+    const names = [...html.matchAll(nameRe)].map((x) => decodeEmbeddedJsonString(x[1]));
     const prices = [...html.matchAll(priceRe)].map((x) => parseFloat(x[1]));
-    const brands = [...html.matchAll(brandRe)].map((x) => (x[1] && x[1].trim() ? x[1] : null));
+    const brands = [...html.matchAll(brandRe)].map((x) => {
+      const brand = decodeEmbeddedJsonString(x[1]).trim();
+      return brand ? brand : null;
+    });
     const productIds = [...html.matchAll(productIdRe)].map((x) => x[1]);
     for (let i = 0; i < productIds.length; i++) {
       const id = productIds[i];
@@ -194,12 +207,13 @@ function extractProductsFromHtml(
   }
 
   const names = [...html.matchAll(/"item_name":"((?:[^"\\]|\\.)*)"/g)].map((x) =>
-    x[1].replace(/\\"/g, '"')
+    decodeEmbeddedJsonString(x[1])
   );
   const prices = [...html.matchAll(/"price":(\d+(?:\.\d+)?)/g)].map((x) => parseFloat(x[1]));
-  const brands = [...html.matchAll(/"item_brand":"((?:[^"\\]|\\.)*)"/g)].map((x) =>
-    x[1] && x[1].trim() ? x[1] : null
-  );
+  const brands = [...html.matchAll(/"item_brand":"((?:[^"\\]|\\.)*)"/g)].map((x) => {
+    const brand = decodeEmbeddedJsonString(x[1]).trim();
+    return brand ? brand : null;
+  });
   const productIds = [...html.matchAll(/"product_id":"(\d+)"/g)].map((x) => x[1]);
 
   const $ = cheerio.load(html);
@@ -406,6 +420,15 @@ async function main() {
   console.log(`\nDone. ${products.length} products.`);
   console.log(`Raw: ${rawPath}`);
   console.log(`Materials: ${materialsPath}`);
+
+  if (mode !== "test") {
+    writeSourceLastUpdate(outputDir, {
+      source: "edify",
+      updatedAt: new Date().toISOString(),
+      productCount: products.length,
+      materialsFile: "edify-materials.json",
+    });
+  }
 }
 
 main().catch((e) => {
